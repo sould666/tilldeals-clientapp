@@ -6,7 +6,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "package:win": "electron-builder --win dir --x64"
+    "package:win": "electron-builder --win dir --x64",
+    "deploy:win": "node scripts/deploy-win.js"
   },
   "dependencies": {
     "systeminformation": "^5.33.8"
