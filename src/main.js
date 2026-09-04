@@ -1,17 +1,59 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const os = require('node:os');
 const path = require('node:path');
+const fs = require('node:fs');
 const { promisify } = require('node:util');
 const { execFile } = require('node:child_process');
-const si = require('systeminformation');
 
 const execFileAsync = promisify(execFile);
+
+function getLogDirectory() {
+  if (app.isReady()) return app.getPath('userData');
+
+  const baseDirectory = process.platform === 'win32'
+    ? process.env.APPDATA
+    : process.env.XDG_STATE_HOME || process.env.HOME || process.cwd();
+  return path.join(baseDirectory, 'TillDeals Hardware');
+}
+
+function writeLog(level, message, details) {
+  try {
+    const logDirectory = getLogDirectory();
+    const entry = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      level,
+      message,
+      details,
+    });
+    fs.mkdirSync(logDirectory, { recursive: true });
+    fs.appendFileSync(path.join(logDirectory, 'runtime.log'), `${entry}\n`);
+  } catch (error) {
+    console.error('Could not write runtime log.', error);
+  }
+}
+
+function errorDetails(error) {
+  return { message: error?.message ?? String(error), stack: error?.stack };
+}
+
+writeLog('info', 'Main process module started.', { platform: process.platform, node: process.version });
+
+let si;
+try {
+  si = require('systeminformation');
+  writeLog('info', 'systeminformation module loaded.');
+} catch (error) {
+  writeLog('error', 'Could not load systeminformation.', errorDetails(error));
+  throw error;
+}
 
 function isWsl() {
   return Boolean(process.env.WSL_DISTRO_NAME) || os.release().toLowerCase().includes('microsoft');
 }
 
 async function getWindowsHostSnapshot() {
+  writeLog('info', 'Reading hardware from Windows host through WSL.');
   const script = String.raw`
     $ErrorActionPreference = 'Stop'
     $computer = Get-CimInstance Win32_ComputerSystem
@@ -50,7 +92,9 @@ async function getWindowsHostSnapshot() {
     script,
   ], { windowsHide: true, maxBuffer: 1024 * 1024 });
 
-  return { ...JSON.parse(stdout), source: 'Windows host (via WSL)', collectedAt: new Date().toISOString() };
+  const snapshot = { ...JSON.parse(stdout), source: 'Windows host (via WSL)', collectedAt: new Date().toISOString() };
+  writeLog('info', 'Windows host hardware read completed.');
+  return snapshot;
 }
 
 async function getHardwareSnapshot() {
@@ -59,9 +103,11 @@ async function getHardwareSnapshot() {
       return await getWindowsHostSnapshot();
     } catch (error) {
       console.warn('Could not query the Windows host; using WSL hardware details instead.', error.message);
+      writeLog('warn', 'Windows host hardware read failed; using WSL details.', errorDetails(error));
     }
   }
 
+  writeLog('info', 'Reading hardware from the local operating system.');
   const [
     os,
     system,
@@ -92,7 +138,7 @@ async function getHardwareSnapshot() {
     si.audio(),
   ]);
 
-  return {
+  const snapshot = {
     os,
     system,
     cpu,
@@ -109,9 +155,12 @@ async function getHardwareSnapshot() {
     source: 'Local operating system',
     collectedAt: new Date().toISOString(),
   };
+  writeLog('info', 'Local operating system hardware read completed.');
+  return snapshot;
 }
 
 function createWindow() {
+  writeLog('info', 'Creating application window.');
   const window = new BrowserWindow({
     width: 1240,
     height: 820,
@@ -125,11 +174,30 @@ function createWindow() {
     },
   });
 
-  window.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  window.webContents.on('did-finish-load', () => writeLog('info', 'Renderer finished loading.'));
+  window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedUrl) => {
+    writeLog('error', 'Renderer failed to load.', { errorCode, errorDescription, validatedUrl });
+  });
+  window.webContents.on('render-process-gone', (_event, details) => {
+    writeLog('error', 'Renderer process exited.', details);
+  });
+  window.loadFile(path.join(__dirname, 'renderer', 'index.html')).catch((error) => {
+    writeLog('error', 'Could not load renderer file.', errorDetails(error));
+  });
 }
 
 app.whenReady().then(() => {
-  ipcMain.handle('hardware:read', getHardwareSnapshot);
+  writeLog('info', 'Application ready.', { platform: process.platform, isWsl: isWsl() });
+  ipcMain.handle('hardware:read', async () => {
+    writeLog('info', 'Hardware read requested by renderer.');
+    try {
+      return await getHardwareSnapshot();
+    } catch (error) {
+      writeLog('error', 'Hardware read failed.', errorDetails(error));
+      throw error;
+    }
+  });
+  ipcMain.on('runtime:log', (_event, level, message, details) => writeLog(level, message, details));
   createWindow();
 
   app.on('activate', () => {
@@ -138,5 +206,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  writeLog('info', 'All application windows closed.');
   if (process.platform !== 'darwin') app.quit();
 });
+
+process.on('uncaughtException', (error) => writeLog('error', 'Uncaught exception.', errorDetails(error)));
+process.on('unhandledRejection', (error) => writeLog('error', 'Unhandled promise rejection.', errorDetails(error)));

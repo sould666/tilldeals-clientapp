@@ -97,15 +97,26 @@ async function loadHardware() {
   const button = document.querySelector('#refresh');
   button.disabled = true;
   document.querySelector('#updated-at').textContent = 'Reading hardware details...';
+  window.hardware.log('info', 'Renderer requested a hardware refresh.');
 
   try {
-    render(await window.hardware.read());
+    const snapshot = await window.hardware.read();
+    window.hardware.log('info', 'Renderer received hardware data.', { source: snapshot.source });
+    render(snapshot);
   } catch (error) {
+    window.hardware.log('error', 'Renderer hardware refresh failed.', { message: error.message, stack: error.stack });
     document.querySelector('#updated-at').textContent = `Could not read hardware details: ${error.message}`;
   } finally {
     button.disabled = false;
   }
 }
+
+window.addEventListener('error', (event) => {
+  window.hardware.log('error', 'Renderer uncaught error.', { message: event.message, filename: event.filename, line: event.lineno, column: event.colno });
+});
+window.addEventListener('unhandledrejection', (event) => {
+  window.hardware.log('error', 'Renderer unhandled rejection.', { reason: String(event.reason) });
+});
 
 document.querySelector('#refresh').addEventListener('click', loadHardware);
 loadHardware();

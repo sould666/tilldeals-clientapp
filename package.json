@@ -6,24 +6,26 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "package:win": "electron-builder --win portable --x64"
+    "package:win": "electron-builder --win dir --x64"
   },
   "dependencies": {
-    "electron": "^37.4.0",
     "systeminformation": "^5.33.8"
   },
   "devDependencies": {
+    "electron": "^37.4.0",
     "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.tilldeals.hardware",
     "productName": "TillDeals Hardware",
+    "icon": "build/icon.ico",
     "asar": true,
     "files": [
       "src/**/*",
       "package.json"
     ],
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "portable",
