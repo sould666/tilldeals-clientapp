@@ -52,6 +52,22 @@ function isWsl() {
   return Boolean(process.env.WSL_DISTRO_NAME) || os.release().toLowerCase().includes('microsoft');
 }
 
+function normalizeTemperatures(temperatures, graphics) {
+  const main = Number.isFinite(temperatures?.main) ? temperatures.main : null;
+  const cores = Array.isArray(temperatures?.cores) ? temperatures.cores.filter(Number.isFinite) : [];
+  const gpu = (graphics?.controllers || [])
+    .map((controller) => controller.temperatureGpu)
+    .filter(Number.isFinite);
+  return {
+    main,
+    cores,
+    gpu,
+    cpuAvailable: main !== null || cores.length > 0,
+    cpuSource: main !== null || cores.length > 0 ? 'systeminformation / OS sensor' : 'No exposed CPU sensor',
+    gpuAvailable: gpu.length > 0,
+  };
+}
+
 async function getWindowsHostSnapshot() {
   writeLog('info', 'Reading hardware from Windows host through WSL.');
   const script = String.raw`
@@ -60,7 +76,10 @@ async function getWindowsHostSnapshot() {
     $operatingSystem = Get-CimInstance Win32_OperatingSystem
     $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
     $memoryModules = @(Get-CimInstance Win32_PhysicalMemory)
+    $memoryArrays = @(Get-CimInstance Win32_PhysicalMemoryArray)
     $graphics = @(Get-CimInstance Win32_VideoController)
+    $thermalZones = @(Get-CimInstance MSAcpi_ThermalZoneTemperature -Namespace root/wmi -ErrorAction SilentlyContinue)
+    $devices = @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -in @('Display', 'Media', 'Net', 'Storage', 'USB', 'System') -and $_.Status -eq 'OK' })
     $baseboard = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
     $bios = Get-CimInstance Win32_BIOS | Select-Object -First 1
     $disks = @(Get-CimInstance Win32_DiskDrive)
@@ -74,7 +93,10 @@ async function getWindowsHostSnapshot() {
       cpu = @{ brand = $processor.Name; physicalCores = $processor.NumberOfCores; cores = $processor.NumberOfLogicalProcessors; speed = [math]::Round($processor.MaxClockSpeed / 1000, 2); socket = $processor.SocketDesignation }
       memory = @{ total = [int64]$computer.TotalPhysicalMemory; available = [int64]$operatingSystem.FreePhysicalMemory * 1KB; active = [int64]$computer.TotalPhysicalMemory - ([int64]$operatingSystem.FreePhysicalMemory * 1KB) }
       memoryLayout = @($memoryModules | ForEach-Object { @{ size = [int64]$_.Capacity; type = $_.SMBIOSMemoryType; clockSpeed = $_.ConfiguredClockSpeed } })
-      graphics = @{ controllers = @($graphics | ForEach-Object { @{ vendor = $_.AdapterCompatibility; model = $_.Name } }); displays = @() }
+      memorySlots = @{ total = [int](($memoryArrays | Measure-Object -Property MemoryDevices -Sum).Sum); maxCapacity = [int64](($memoryArrays | Measure-Object -Property MaxCapacity -Sum).Sum) * 1KB; used = $memoryModules.Count }
+      graphics = @{ controllers = @($graphics | ForEach-Object { @{ vendor = $_.AdapterCompatibility; model = $_.Name; vram = $_.AdapterRAM } }); displays = @() }
+      deviceInventory = @($devices | ForEach-Object { @{ name = $_.Name; category = $_.PNPClass; manufacturer = $_.Manufacturer; deviceId = $_.DeviceID } })
+      temperatures = @{ main = if ($thermalZones.Count) { [math]::Round(($thermalZones | Measure-Object -Property CurrentTemperature -Average).Average / 10 - 273.15, 1) } else { $null }; cores = @(); gpu = @(); cpuAvailable = $thermalZones.Count -gt 0; cpuSource = if ($thermalZones.Count) { 'Windows ACPI thermal zone' } else { 'Windows ACPI sensor unavailable' }; gpuAvailable = $false }
       baseboard = @{ manufacturer = $baseboard.Manufacturer; model = $baseboard.Product }
       bios = @{ vendor = $bios.Manufacturer; version = $bios.SMBIOSBIOSVersion; releaseDate = $bios.ReleaseDate }
       disks = @($disks | ForEach-Object { @{ name = $_.Model; model = $_.Model; size = [int64]$_.Size } })
@@ -115,6 +137,7 @@ async function getHardwareSnapshot() {
     memory,
     memoryLayout,
     graphics,
+    temperatures,
     baseboard,
     bios,
     disks,
@@ -122,6 +145,7 @@ async function getHardwareSnapshot() {
     network,
     battery,
     audio,
+    deviceInventory,
   ] = await Promise.all([
     si.osInfo(),
     si.system(),
@@ -129,6 +153,7 @@ async function getHardwareSnapshot() {
     si.mem(),
     si.memLayout(),
     si.graphics(),
+    si.cpuTemperature(),
     si.baseboard(),
     si.bios(),
     si.diskLayout(),
@@ -136,6 +161,7 @@ async function getHardwareSnapshot() {
     si.networkInterfaces(),
     si.battery(),
     si.audio(),
+    si.usb(),
   ]);
 
   const snapshot = {
@@ -144,7 +170,13 @@ async function getHardwareSnapshot() {
     cpu,
     memory,
     memoryLayout,
+    memorySlots: {
+      total: baseboard.memSlots,
+      used: memoryLayout.filter((module) => module.size > 0).length,
+      maxCapacity: null,
+    },
     graphics,
+    temperatures: normalizeTemperatures(temperatures, graphics),
     baseboard,
     bios,
     disks,
@@ -152,6 +184,7 @@ async function getHardwareSnapshot() {
     network,
     battery,
     audio,
+    deviceInventory,
     source: 'Local operating system',
     collectedAt: new Date().toISOString(),
   };

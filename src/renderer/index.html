@@ -14,10 +14,29 @@
           <h1>Machine profile</h1>
           <p id="updated-at" class="updated">Reading hardware details...</p>
         </div>
-        <button id="refresh" type="button">Refresh</button>
+        <div class="top-actions">
+          <button id="refresh" type="button">Refresh</button>
+          <nav aria-label="Application views">
+            <button class="nav-button active" data-nav="profile" type="button">Profile</button>
+            <button class="nav-button" data-nav="settings" type="button">Settings</button>
+            <button class="nav-button" data-nav="diagnosis" type="button">Manual Diagnosis</button>
+          </nav>
+        </div>
       </header>
-      <section id="summary" class="summary" aria-label="System summary"></section>
-      <section id="details" class="details" aria-live="polite"></section>
+      <section data-view="profile">
+        <section id="summary" class="summary" aria-label="System summary"></section>
+        <section id="details" class="details" aria-live="polite"></section>
+      </section>
+      <section class="utility-view" data-view="settings" hidden>
+        <h2>Settings</h2>
+        <label class="setting-row"><input id="auto-refresh" type="checkbox" /> Refresh hardware data every 60 seconds</label>
+        <p class="utility-note">Hardware data is read locally. Nothing is uploaded by this application.</p>
+      </section>
+      <section class="utility-view" data-view="diagnosis" hidden>
+        <div class="utility-heading"><div><p class="eyebrow">TROUBLESHOOTING</p><h2>Manual Diagnosis</h2></div><button id="back-to-profile" type="button">Back to profile</button></div>
+        <div id="diagnosis-flow" class="diagnosis-flow"></div>
+        <div id="diagnosis-results" class="diagnosis-results"></div>
+      </section>
     </main>
     <template id="section-template">
       <article class="section">
@@ -25,6 +44,7 @@
         <dl></dl>
       </article>
     </template>
+    <script src="diagnosis-tree.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>
