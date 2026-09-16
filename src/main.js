@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -50,6 +50,111 @@ try {
 
 function isWsl() {
   return Boolean(process.env.WSL_DISTRO_NAME) || os.release().toLowerCase().includes('microsoft');
+}
+
+const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
+const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
+
+function getOpenAiKeyPath() {
+  return path.join(app.getPath('userData'), 'openai.key');
+}
+
+function hasOpenAiKey() {
+  return fs.existsSync(getOpenAiKeyPath());
+}
+
+function saveOpenAiKey(key) {
+  const keyPath = getOpenAiKeyPath();
+  if (!key) {
+    if (fs.existsSync(keyPath)) fs.rmSync(keyPath);
+    return;
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure storage is not available on this system.');
+  }
+  fs.writeFileSync(keyPath, safeStorage.encryptString(key));
+}
+
+function loadOpenAiKey() {
+  const keyPath = getOpenAiKeyPath();
+  if (!fs.existsSync(keyPath)) return null;
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  return safeStorage.decryptString(fs.readFileSync(keyPath));
+}
+
+// Reduces a hardware snapshot to the fields relevant for compatibility matching.
+// Never forward serial numbers or the full raw snapshot to an external API.
+function buildHardwareDataLayer(snapshot) {
+  if (!snapshot) return {};
+  return {
+    os: snapshot.os?.platform,
+    cpuBrand: snapshot.cpu?.brand,
+    cpuSocket: snapshot.cpu?.socket,
+    motherboard: `${snapshot.baseboard?.manufacturer || ''} ${snapshot.baseboard?.model || ''}`.trim(),
+    memoryType: snapshot.memoryLayout?.find((module) => module.type)?.type || null,
+    memorySlotsTotal: snapshot.memorySlots?.total ?? null,
+    graphicsModels: (snapshot.graphics?.controllers || []).map((controller) => controller.model).filter(Boolean),
+  };
+}
+
+async function testOpenAiConnection() {
+  const key = loadOpenAiKey();
+  if (!key) return { ok: false, message: 'No OpenAI API key is configured.' };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(OPENAI_MODELS_URL, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: controller.signal,
+    });
+    if (response.ok) return { ok: true, message: 'Connected to OpenAI successfully.' };
+    if (response.status === 401) return { ok: false, message: 'OpenAI rejected the API key.' };
+    return { ok: false, message: `OpenAI returned status ${response.status}.` };
+  } catch (error) {
+    return { ok: false, message: `Could not reach OpenAI: ${error.message}` };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function findReplacementDevice({ component, label, reason, hardwareSnapshot }) {
+  const key = loadOpenAiKey();
+  if (!key) throw new Error('No OpenAI API key is configured. Add one in Settings.');
+
+  const dataLayer = buildHardwareDataLayer(hardwareSnapshot);
+  const prompt = [
+    'A local diagnostic app identified a hardware part that likely needs replacement.',
+    `Part to replace: ${String(label || component || '').slice(0, 200)}`,
+    `Diagnosis reason: ${String(reason || '').slice(0, 500)}`,
+    `Known existing hardware for compatibility: ${JSON.stringify(dataLayer)}`,
+    'Suggest a specific, currently sold replacement part that is compatible with the existing hardware. Keep the answer under 120 words.',
+  ].join('\n');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(OPENAI_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`OpenAI returned status ${response.status}.`);
+    }
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() || 'No suggestion was returned.';
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function normalizeTemperatures(temperatures, graphics) {
@@ -231,6 +336,35 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.on('runtime:log', (_event, level, message, details) => writeLog(level, message, details));
+  ipcMain.handle('settings:getOpenAiKeyStatus', () => ({
+    hasKey: hasOpenAiKey(),
+    encryptionAvailable: safeStorage.isEncryptionAvailable(),
+  }));
+  ipcMain.handle('settings:setOpenAiKey', (_event, key) => {
+    try {
+      saveOpenAiKey(typeof key === 'string' ? key.trim() : '');
+      writeLog('info', 'OpenAI API key updated.', { hasKey: hasOpenAiKey() });
+      return { ok: true };
+    } catch (error) {
+      writeLog('error', 'Could not store OpenAI API key.', errorDetails(error));
+      return { ok: false, message: error.message };
+    }
+  });
+  ipcMain.handle('settings:testOpenAiConnection', async () => {
+    const result = await testOpenAiConnection();
+    writeLog('info', 'OpenAI connection test completed.', { ok: result.ok });
+    return result;
+  });
+  ipcMain.handle('llm:findReplacementDevice', async (_event, payload) => {
+    try {
+      const message = await findReplacementDevice(payload || {});
+      writeLog('info', 'LLM replacement device lookup completed.', { component: payload?.component });
+      return { ok: true, message };
+    } catch (error) {
+      writeLog('error', 'LLM replacement device lookup failed.', errorDetails(error));
+      return { ok: false, message: error.message };
+    }
+  });
   createWindow();
 
   app.on('activate', () => {

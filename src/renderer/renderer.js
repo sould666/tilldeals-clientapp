@@ -3,7 +3,7 @@ const byteFormatter = new Intl.NumberFormat(undefined, {
 });
 
 let refreshTimer;
-const diagnosisState = { mode: 'amateur', symptom: null };
+const diagnosisState = { mode: 'amateur', area: null, symptom: null, checkIndex: 0, outcome: null };
 
 function formatBytes(value) {
   if (!Number.isFinite(value) || value <= 0) return 'Not reported';
@@ -118,6 +118,10 @@ function categoryForSymptom(symptom) {
   return DIAGNOSIS_TREE.find((category) => category.symptoms.includes(symptom));
 }
 
+function categoriesForArea(areaId) {
+  return DIAGNOSIS_TREE.filter((category) => category.area === areaId);
+}
+
 function makeActionButton(label, className, onClick) {
   const button = document.createElement('button');
   button.className = className;
@@ -130,11 +134,12 @@ function makeActionButton(label, className, onClick) {
 function renderDiagnosisFlow() {
   const target = document.querySelector('#diagnosis-flow');
   target.replaceChildren();
+  const selectedArea = diagnosisState.area ? DIAGNOSIS_AREAS.find((area) => area.id === diagnosisState.area) : null;
   const heading = document.createElement('p');
   heading.className = 'diagnosis-path';
   heading.textContent = [
     'Komputer działa, ale występuje problem',
-    diagnosisState.symptom ? categoryForSymptom(diagnosisState.symptom)?.name : null,
+    selectedArea?.name,
     diagnosisState.symptom,
   ].filter(Boolean).join('  /  ');
   target.append(heading);
@@ -150,18 +155,45 @@ function renderDiagnosisFlow() {
   });
   target.append(modeBar);
 
-  if (!diagnosisState.symptom) {
+  if (!diagnosisState.area) {
     const title = document.createElement('h3');
-    title.textContent = 'Co dokładnie się dzieje?';
+    title.textContent = 'Gdzie występuje problem?';
     target.append(title);
     const explanation = document.createElement('p');
     explanation.className = 'utility-note';
-    explanation.textContent = 'Wybierz objaw. Aplikacja przypisze prawdopodobny obszar problemu i przygotuje kolejne kroki.';
+    explanation.textContent = 'Wybierz obszar, którego dotyczy problem.';
     target.append(explanation);
+    const areaChoices = document.createElement('div');
+    areaChoices.className = 'diagnosis-areas';
+    DIAGNOSIS_AREAS.forEach((area) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'area-choice';
+      button.innerHTML = `<span class="area-icon">${area.icon}</span><span>${area.name}</span>`;
+      button.addEventListener('click', () => {
+        diagnosisState.area = area.id;
+        renderDiagnosisFlow();
+      });
+      areaChoices.append(button);
+    });
+    target.append(areaChoices);
+    return;
+  }
+
+  if (!diagnosisState.symptom) {
+    target.append(makeActionButton('← Obszary', 'text-action', () => {
+      diagnosisState.area = null;
+      renderDiagnosisFlow();
+    }));
+    const title = document.createElement('h3');
+    title.textContent = 'Co dokładnie się dzieje?';
+    target.append(title);
     const choices = document.createElement('div');
     choices.className = 'diagnosis-choices symptoms';
-    DIAGNOSIS_TREE.flatMap((category) => category.symptoms).forEach((symptom) => choices.append(makeActionButton(symptom, 'diagnosis-choice', () => {
+    categoriesForArea(diagnosisState.area).flatMap((category) => category.symptoms).forEach((symptom) => choices.append(makeActionButton(symptom, 'diagnosis-choice', () => {
       diagnosisState.symptom = symptom;
+      diagnosisState.checkIndex = 0;
+      diagnosisState.outcome = null;
       renderDiagnosisFlow();
     })));
     target.append(choices);
@@ -170,14 +202,19 @@ function renderDiagnosisFlow() {
 
   const category = categoryForSymptom(diagnosisState.symptom);
 
-  target.append(makeActionButton('← Wszystkie objawy', 'text-action', () => {
+  target.append(makeActionButton('← Objawy', 'text-action', () => {
     diagnosisState.symptom = null;
+    diagnosisState.checkIndex = 0;
+    diagnosisState.outcome = null;
     renderDiagnosisFlow();
   }));
-  const area = document.createElement('p');
-  area.className = 'assigned-area';
-  area.textContent = `Prawdopodobny obszar: ${category?.name || 'Inne'}`;
-  target.append(area);
+
+  const outcomeData = typeof getDiagnosisOutcome === 'function' ? getDiagnosisOutcome(diagnosisState.symptom) : null;
+  if (outcomeData) {
+    renderChecklistWizard(target, outcomeData);
+    return;
+  }
+
   const title = document.createElement('h3');
   title.textContent = diagnosisState.mode === 'amateur' ? 'Co możesz sprawdzić' : 'Kroki oceny technicznej';
   target.append(title);
@@ -191,6 +228,74 @@ function renderDiagnosisFlow() {
   target.append(steps);
 }
 
+function renderChecklistWizard(target, outcomeData) {
+  if (diagnosisState.outcome) {
+    renderOutcomeCard(target, diagnosisState.outcome);
+    return;
+  }
+
+  const check = outcomeData.checks[diagnosisState.checkIndex];
+  if (!check) {
+    diagnosisState.outcome = outcomeData.finalOutcome;
+    renderOutcomeCard(target, diagnosisState.outcome);
+    return;
+  }
+
+  const title = document.createElement('h3');
+  title.textContent = 'Sprawdź i odpowiedz';
+  target.append(title);
+
+  const question = document.createElement('p');
+  question.className = 'checklist-question';
+  question.textContent = check.question;
+  target.append(question);
+
+  const answers = document.createElement('div');
+  answers.className = 'diagnosis-mode';
+  answers.append(makeActionButton('Tak', 'mode-button', () => {
+    diagnosisState.checkIndex += 1;
+    renderDiagnosisFlow();
+  }));
+  answers.append(makeActionButton('Nie', 'mode-button', () => {
+    diagnosisState.outcome = check.no || outcomeData.finalOutcome;
+    renderDiagnosisFlow();
+  }));
+  target.append(answers);
+}
+
+function renderOutcomeCard(target, outcome) {
+  const card = document.createElement('div');
+  card.className = 'outcome-card';
+  card.innerHTML = `
+    <p class="eyebrow">SUGEROWANA WYMIANA</p>
+    <h3>${present(outcome.label)}</h3>
+    <p>${present(outcome.reason)}</p>
+  `;
+  const result = document.createElement('p');
+  result.className = 'utility-note';
+  const searchButton = makeActionButton('Znajdź zamiennik (AI)', 'secondary-action', () => findReplacementDevice(outcome, searchButton, result));
+  card.append(searchButton, result);
+  target.append(card);
+}
+
+async function findReplacementDevice(outcome, button, resultElement) {
+  button.disabled = true;
+  resultElement.textContent = 'Szukam zamiennika...';
+  try {
+    const response = await window.llm.findReplacementDevice({
+      component: outcome.component,
+      label: outcome.label,
+      reason: outcome.reason,
+      hardwareSnapshot: window.latestSnapshot,
+    });
+    resultElement.textContent = response.ok ? response.message : `Nie udało się znaleźć zamiennika: ${response.message}`;
+  } catch (error) {
+    resultElement.textContent = `Nie udało się znaleźć zamiennika: ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function setupNavigation() {
   document.querySelectorAll('[data-nav]').forEach((button) => {
     button.addEventListener('click', () => showView(button.dataset.nav));
@@ -198,6 +303,10 @@ function setupNavigation() {
   document.querySelector('#back-to-profile').addEventListener('click', () => showView('profile'));
   document.querySelector('[data-nav="diagnosis"]').addEventListener('click', () => {
     showView('diagnosis');
+    diagnosisState.area = null;
+    diagnosisState.symptom = null;
+    diagnosisState.checkIndex = 0;
+    diagnosisState.outcome = null;
     renderDiagnosisFlow();
     if (window.latestSnapshot) renderDiagnosis(window.latestSnapshot);
   });
@@ -305,6 +414,36 @@ window.addEventListener('unhandledrejection', (event) => {
   window.hardware.log('error', 'Renderer unhandled rejection.', { reason: String(event.reason) });
 });
 
+async function refreshOpenAiKeyStatus() {
+  const status = await window.settings.getOpenAiKeyStatus();
+  const statusText = document.querySelector('#openai-key-status');
+  if (!status.encryptionAvailable) {
+    statusText.textContent = 'Secure storage is unavailable on this system; the key cannot be saved.';
+  } else {
+    statusText.textContent = status.hasKey ? 'A key is saved on this device.' : 'No key saved yet.';
+  }
+}
+
+function setupSettings() {
+  refreshOpenAiKeyStatus();
+  document.querySelector('#save-openai-key').addEventListener('click', async () => {
+    const input = document.querySelector('#openai-key');
+    const result = await window.settings.setOpenAiKey(input.value);
+    input.value = '';
+    document.querySelector('#openai-key-status').textContent = result.ok ? 'Key saved.' : `Could not save key: ${result.message}`;
+    await refreshOpenAiKeyStatus();
+  });
+  document.querySelector('#test-openai-key').addEventListener('click', async (event) => {
+    event.target.disabled = true;
+    const statusText = document.querySelector('#openai-key-status');
+    statusText.textContent = 'Testing connection...';
+    const result = await window.settings.testOpenAiConnection();
+    statusText.textContent = result.message;
+    event.target.disabled = false;
+  });
+}
+
 setupNavigation();
+setupSettings();
 document.querySelector('#refresh').addEventListener('click', loadHardware);
 loadHardware();
