@@ -52,6 +52,78 @@ const DIAGNOSIS_OUTCOMES = {
       reason: 'Karta graficzna działa poprawnie na różnych portach i monitorach, ale migotanie nadal występuje.',
     },
   },
+  'Obraz jest przycięty': {
+  checks: [
+    {
+      id: 'resolution-native',
+      question: 'Czy rozdzielczość ekranu jest ustawiona na natywną (zalecaną) rozdzielczość monitora?',
+      no: {
+        component: 'display-resolution',
+        label: 'Ustawienia rozdzielczości ekranu',
+        reason: 'Nieprawidłowa rozdzielczość może powodować przycięcie lub nieprawidłowe skalowanie obrazu.',
+      },
+    },
+    {
+      id: 'display-scaling',
+      question: 'Czy skalowanie obrazu w systemie jest ustawione na zalecaną wartość?',
+      no: {
+        component: 'display-scaling',
+        label: 'Ustawienia skalowania obrazu',
+        reason: 'Nieprawidłowe skalowanie systemowe może powodować wyświetlanie obrazu poza widocznym obszarem ekranu.',
+      },
+    },
+    {
+      id: 'monitor-scaling',
+      question: 'Czy ustawienia proporcji i skalowania w menu monitora są ustawione prawidłowo?',
+      no: {
+        component: 'monitor-settings',
+        label: 'Ustawienia skalowania monitora',
+        reason: 'Nieprawidłowy tryb proporcji lub skalowania monitora może powodować przycięcie obrazu.',
+      },
+    },
+    {
+      id: 'gpu-scaling',
+      question: 'Czy skalowanie w ustawieniach karty graficznej jest ustawione prawidłowo?',
+      no: {
+        component: 'gpu-scaling',
+        label: 'Ustawienia skalowania karty graficznej',
+        reason: 'Nieprawidłowe skalowanie GPU lub włączony overscan może powodować przycięcie krawędzi obrazu.',
+      },
+    },
+    {
+      id: 'other-port',
+      question: 'Czy obraz nadal jest przycięty po podłączeniu monitora do innego portu karty graficznej?',
+      no: {
+        component: 'gpu-output-port',
+        label: 'Port wyjściowy karty graficznej',
+        reason: 'Problem ustąpił po zmianie portu karty graficznej.',
+      },
+    },
+    {
+      id: 'other-cable',
+      question: 'Czy obraz nadal jest przycięty po podłączeniu monitora innym kablem wideo?',
+      no: {
+        component: 'cable',
+        label: 'Kabel wideo (HDMI/DisplayPort)',
+        reason: 'Problem ustąpił po zastosowaniu innego kabla wideo.',
+      },
+    },
+    {
+      id: 'other-screen',
+      question: 'Czy obraz nadal jest przycięty po podłączeniu innego monitora?',
+      no: {
+        component: 'monitor',
+        label: 'Monitor',
+        reason: 'Problem nie występuje na innym monitorze, co wskazuje na problem z monitorem lub jego ustawieniami.',
+      },
+    },
+  ],
+  finalOutcome: {
+    component: 'gpu',
+    label: 'Karta graficzna',
+    reason: 'Rozdzielczość, skalowanie, monitor, kabel i port zostały sprawdzone, a problem z przyciętym obrazem nadal występuje.',
+  },
+},
 };
 
 function getDiagnosisOutcome(symptom) {

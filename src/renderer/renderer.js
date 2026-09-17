@@ -3,26 +3,32 @@ const byteFormatter = new Intl.NumberFormat(undefined, {
 });
 
 let refreshTimer;
-const diagnosisState = { mode: 'amateur', area: null, symptom: null, checkIndex: 0, outcome: null };
+const diagnosisState = { mode: 'amateur', area: null, symptom: null, query: '', checkIndex: 0, outcome: null };
 
 function formatBytes(value) {
-  if (!Number.isFinite(value) || value <= 0) return 'Not reported';
+  if (!Number.isFinite(value) || value <= 0) return t('status.notReported');
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   return `${byteFormatter.format(value / 1024 ** index)} ${units[index]}`;
 }
 
 function present(value) {
-  return value === undefined || value === null || value === '' ? 'Not reported' : String(value);
+  return value === undefined || value === null || value === '' ? t('status.notReported') : String(value);
 }
 
 function list(values, formatter = present) {
-  return values?.length ? values.map(formatter).join(', ') : 'Not reported';
+  return values?.length ? values.map(formatter).join(', ') : t('status.notReported');
+}
+
+function localizedSource(source) {
+  if (source === 'Local operating system') return getLocale() === 'pl' ? 'Lokalny system operacyjny' : source;
+  if (source === 'Windows host (via WSL)') return getLocale() === 'pl' ? 'Host Windows (przez WSL)' : source;
+  return source;
 }
 
 function slotSummary(memorySlots) {
-  if (!memorySlots) return 'Not reported';
-  return `${memorySlots.used ?? 'Unknown'} used of ${memorySlots.total ?? 'unknown'} slots`;
+  if (!memorySlots) return t('status.notReported');
+  return t('status.usedSlots', { used: memorySlots.used ?? t('hardware.unknown'), total: memorySlots.total ?? t('hardware.unknown') });
 }
 
 function addSection(title, entries) {
@@ -48,24 +54,6 @@ function showView(viewName) {
   });
   document.querySelectorAll('[data-nav]').forEach((button) => {
     button.classList.toggle('active', button.dataset.nav === viewName);
-  });
-}
-
-function renderDiagnosis(snapshot) {
-  const checks = [
-    ['Operating system source', snapshot.source],
-    ['Temperature data', snapshot.temperatures?.main !== null || snapshot.temperatures?.cores?.length ? 'Available' : 'Not exposed by driver'],
-    ['GPU sensor data', snapshot.temperatures?.gpu?.length ? 'Available' : 'Not exposed by driver'],
-    ['Memory slot data', snapshot.memorySlots?.total ? `${snapshot.memorySlots.used} of ${snapshot.memorySlots.total} used` : 'Not reported'],
-    ['Device inventory', snapshot.deviceInventory?.length ? `${snapshot.deviceInventory.length} devices` : 'No devices reported'],
-  ];
-  const target = document.querySelector('#diagnosis-results');
-  target.replaceChildren();
-  checks.forEach(([label, value]) => {
-    const item = document.createElement('div');
-    item.className = 'diagnosis-row';
-    item.innerHTML = `<span>${label}</span><strong>${present(value)}</strong>`;
-    target.append(item);
   });
 }
 
@@ -118,10 +106,6 @@ function categoryForSymptom(symptom) {
   return DIAGNOSIS_TREE.find((category) => category.symptoms.includes(symptom));
 }
 
-function categoriesForArea(areaId) {
-  return DIAGNOSIS_TREE.filter((category) => category.area === areaId);
-}
-
 function makeActionButton(label, className, onClick) {
   const button = document.createElement('button');
   button.className = className;
@@ -134,34 +118,14 @@ function makeActionButton(label, className, onClick) {
 function renderDiagnosisFlow() {
   const target = document.querySelector('#diagnosis-flow');
   target.replaceChildren();
-  const selectedArea = diagnosisState.area ? DIAGNOSIS_AREAS.find((area) => area.id === diagnosisState.area) : null;
-  const heading = document.createElement('p');
-  heading.className = 'diagnosis-path';
-  heading.textContent = [
-    'Komputer działa, ale występuje problem',
-    selectedArea?.name,
-    diagnosisState.symptom,
-  ].filter(Boolean).join('  /  ');
-  target.append(heading);
-
-  const modeBar = document.createElement('div');
-  modeBar.className = 'diagnosis-mode';
-  modeBar.append(document.createTextNode('Tryb: '));
-  ['amateur', 'professional'].forEach((mode) => {
-    modeBar.append(makeActionButton(mode === 'amateur' ? 'Początkujący' : 'Profesjonalny', `mode-button${diagnosisState.mode === mode ? ' active' : ''}`, () => {
-      diagnosisState.mode = mode;
-      renderDiagnosisFlow();
-    }));
-  });
-  target.append(modeBar);
 
   if (!diagnosisState.area) {
     const title = document.createElement('h3');
-    title.textContent = 'Gdzie występuje problem?';
+    title.textContent = t('diagnosis.chooseArea');
     target.append(title);
     const explanation = document.createElement('p');
     explanation.className = 'utility-note';
-    explanation.textContent = 'Wybierz obszar, którego dotyczy problem.';
+    explanation.textContent = t('diagnosis.chooseAreaHelp');
     target.append(explanation);
     const areaChoices = document.createElement('div');
     areaChoices.className = 'diagnosis-areas';
@@ -172,6 +136,7 @@ function renderDiagnosisFlow() {
       button.innerHTML = `<span class="area-icon">${area.icon}</span><span>${area.name}</span>`;
       button.addEventListener('click', () => {
         diagnosisState.area = area.id;
+        diagnosisState.query = '';
         renderDiagnosisFlow();
       });
       areaChoices.append(button);
@@ -180,29 +145,56 @@ function renderDiagnosisFlow() {
     return;
   }
 
-  if (!diagnosisState.symptom) {
-    target.append(makeActionButton('← Obszary', 'text-action', () => {
+  if (diagnosisState.area && !diagnosisState.symptom) {
+    target.append(makeActionButton(t('diagnosis.backAreas'), 'text-action', () => {
       diagnosisState.area = null;
+      diagnosisState.query = '';
       renderDiagnosisFlow();
     }));
     const title = document.createElement('h3');
-    title.textContent = 'Co dokładnie się dzieje?';
+    title.textContent = t('diagnosis.chooseSymptom');
     target.append(title);
-    const choices = document.createElement('div');
-    choices.className = 'diagnosis-choices symptoms';
-    categoriesForArea(diagnosisState.area).flatMap((category) => category.symptoms).forEach((symptom) => choices.append(makeActionButton(symptom, 'diagnosis-choice', () => {
-      diagnosisState.symptom = symptom;
-      diagnosisState.checkIndex = 0;
-      diagnosisState.outcome = null;
+    const search = document.createElement('input');
+    const query = diagnosisState.query.trim().toLocaleLowerCase();
+    search.className = `diagnosis-search${query ? ' has-query' : ''}`;
+    search.type = 'search';
+    search.placeholder = t('diagnosis.searchPlaceholder');
+    search.value = diagnosisState.query;
+    search.setAttribute('aria-label', t('diagnosis.searchPlaceholder'));
+    search.addEventListener('input', (event) => {
+      diagnosisState.query = event.target.value;
       renderDiagnosisFlow();
-    })));
-    target.append(choices);
+      document.querySelector('.diagnosis-search')?.focus();
+    });
+    target.append(search);
+
+    if (query) {
+      const matches = DIAGNOSIS_TREE.filter((category) => category.area === diagnosisState.area)
+        .flatMap((category) => category.symptoms.filter((symptom) => symptom.toLocaleLowerCase().includes(query)));
+      const choices = document.createElement('div');
+      choices.className = 'diagnosis-choices symptoms';
+      matches.forEach((symptom) => choices.append(makeActionButton(symptom, 'diagnosis-choice', () => {
+        diagnosisState.symptom = symptom;
+        diagnosisState.query = '';
+        diagnosisState.checkIndex = 0;
+        diagnosisState.outcome = null;
+        renderDiagnosisFlow();
+      })));
+      if (!matches.length) {
+        const empty = document.createElement('p');
+        empty.className = 'diagnosis-empty';
+        empty.textContent = t('diagnosis.noSearchResults', { query: diagnosisState.query });
+        target.append(empty);
+      }
+      target.append(choices);
+    }
     return;
   }
 
   const category = categoryForSymptom(diagnosisState.symptom);
 
-  target.append(makeActionButton('← Objawy', 'text-action', () => {
+  target.append(makeActionButton(t('diagnosis.backSymptoms'), 'text-action', () => {
+    diagnosisState.area = null;
     diagnosisState.symptom = null;
     diagnosisState.checkIndex = 0;
     diagnosisState.outcome = null;
@@ -216,11 +208,11 @@ function renderDiagnosisFlow() {
   }
 
   const title = document.createElement('h3');
-  title.textContent = diagnosisState.mode === 'amateur' ? 'Co możesz sprawdzić' : 'Kroki oceny technicznej';
+  title.textContent = t('diagnosis.amateurSteps');
   target.append(title);
   const steps = document.createElement('ol');
   steps.className = 'diagnosis-steps';
-  diagnosisSteps(category?.name || 'Inne', diagnosisState.symptom, diagnosisState.mode).forEach((step) => {
+  diagnosisSteps(category?.name || 'Inne', diagnosisState.symptom, 'amateur').forEach((step) => {
     const item = document.createElement('li');
     item.textContent = step;
     steps.append(item);
@@ -242,7 +234,7 @@ function renderChecklistWizard(target, outcomeData) {
   }
 
   const title = document.createElement('h3');
-  title.textContent = 'Sprawdź i odpowiedz';
+  title.textContent = t('diagnosis.check');
   target.append(title);
 
   const question = document.createElement('p');
@@ -252,11 +244,11 @@ function renderChecklistWizard(target, outcomeData) {
 
   const answers = document.createElement('div');
   answers.className = 'diagnosis-mode';
-  answers.append(makeActionButton('Tak', 'mode-button', () => {
+  answers.append(makeActionButton(t('diagnosis.yes'), 'mode-button', () => {
     diagnosisState.checkIndex += 1;
     renderDiagnosisFlow();
   }));
-  answers.append(makeActionButton('Nie', 'mode-button', () => {
+  answers.append(makeActionButton(t('diagnosis.no'), 'mode-button', () => {
     diagnosisState.outcome = check.no || outcomeData.finalOutcome;
     renderDiagnosisFlow();
   }));
@@ -267,20 +259,20 @@ function renderOutcomeCard(target, outcome) {
   const card = document.createElement('div');
   card.className = 'outcome-card';
   card.innerHTML = `
-    <p class="eyebrow">SUGEROWANA WYMIANA</p>
+    <p class="eyebrow">${t('diagnosis.suggestedReplacement')}</p>
     <h3>${present(outcome.label)}</h3>
     <p>${present(outcome.reason)}</p>
   `;
   const result = document.createElement('p');
   result.className = 'utility-note';
-  const searchButton = makeActionButton('Znajdź zamiennik (AI)', 'secondary-action', () => findReplacementDevice(outcome, searchButton, result));
+  const searchButton = makeActionButton(t('diagnosis.findReplacement'), 'secondary-action', () => findReplacementDevice(outcome, searchButton, result));
   card.append(searchButton, result);
   target.append(card);
 }
 
 async function findReplacementDevice(outcome, button, resultElement) {
   button.disabled = true;
-  resultElement.textContent = 'Szukam zamiennika...';
+  resultElement.textContent = t('diagnosis.searching');
   try {
     const response = await window.llm.findReplacementDevice({
       component: outcome.component,
@@ -288,9 +280,9 @@ async function findReplacementDevice(outcome, button, resultElement) {
       reason: outcome.reason,
       hardwareSnapshot: window.latestSnapshot,
     });
-    resultElement.textContent = response.ok ? response.message : `Nie udało się znaleźć zamiennika: ${response.message}`;
+    resultElement.textContent = response.ok ? response.message : t('diagnosis.replacementFailed', { message: response.message });
   } catch (error) {
-    resultElement.textContent = `Nie udało się znaleźć zamiennika: ${error.message}`;
+    resultElement.textContent = t('diagnosis.replacementFailed', { message: error.message });
   } finally {
     button.disabled = false;
   }
@@ -305,10 +297,10 @@ function setupNavigation() {
     showView('diagnosis');
     diagnosisState.area = null;
     diagnosisState.symptom = null;
+    diagnosisState.query = '';
     diagnosisState.checkIndex = 0;
     diagnosisState.outcome = null;
     renderDiagnosisFlow();
-    if (window.latestSnapshot) renderDiagnosis(window.latestSnapshot);
   });
   document.querySelector('#auto-refresh').addEventListener('change', (event) => {
     clearInterval(refreshTimer);
@@ -319,13 +311,13 @@ function setupNavigation() {
 
 function render(snapshot) {
   const { os, system, cpu, memory, memoryLayout, memorySlots, graphics, baseboard, bios, disks, filesystems, network, battery, audio, deviceInventory, temperatures } = snapshot;
-  document.querySelector('#updated-at').textContent = `Updated ${new Date(snapshot.collectedAt).toLocaleString()} | ${snapshot.source}`;
+  document.querySelector('#updated-at').textContent = t('hardware.updated', { date: new Date(snapshot.collectedAt).toLocaleString(), source: localizedSource(snapshot.source) });
   document.querySelector('#summary').replaceChildren(
     ...[
-      ['Operating system', `${os.distro} ${os.release}`],
-      ['Processor', cpu.brand],
-      ['Installed memory', formatBytes(memory.total)],
-      ['Graphics', list(graphics.controllers, (gpu) => gpu.model)],
+      [t('hardware.operatingSystem'), `${os.distro} ${os.release}`],
+      [t('hardware.processor'), cpu.brand],
+      [t('hardware.installedMemory'), formatBytes(memory.total)],
+      [t('hardware.graphics'), list(graphics.controllers, (gpu) => gpu.model)],
     ].map(([label, value]) => {
       const item = document.createElement('div');
       item.innerHTML = `<span>${label}</span><strong>${present(value)}</strong>`;
@@ -334,63 +326,63 @@ function render(snapshot) {
   );
 
   document.querySelector('#details').replaceChildren();
-  addSection('System', [
-    ['Manufacturer', system.manufacturer],
-    ['Model', system.model],
-    ['Version', system.version],
-    ['Platform', os.platform],
-    ['Kernel', os.kernel],
-    ['Architecture', os.arch],
+  addSection(t('hardware.system'), [
+    [t('hardware.manufacturer'), system.manufacturer],
+    [t('hardware.model'), system.model],
+    [t('hardware.version'), system.version],
+    [t('hardware.platform'), os.platform],
+    [t('hardware.kernel'), os.kernel],
+    [t('hardware.architecture'), os.arch],
   ]);
-  addSection('Processor', [
-    ['Model', cpu.brand],
-    ['Physical cores', cpu.physicalCores],
-    ['Logical cores', cpu.cores],
-    ['Speed', cpu.speed ? `${cpu.speed} GHz` : null],
-    ['Socket', cpu.socket],
-    ['Temperature', temperatures?.main === null || temperatures?.main === undefined ? 'Not reported' : `${temperatures.main} °C`],
-    ['Core temperatures', list(temperatures?.cores, (temperature) => `${temperature} °C`)],
-    ['Sensor status', temperatures?.cpuSource],
+  addSection(t('hardware.processor'), [
+    [t('hardware.model'), cpu.brand],
+    [t('hardware.physicalCores'), cpu.physicalCores],
+    [t('hardware.logicalCores'), cpu.cores],
+    [t('hardware.speed'), cpu.speed ? `${cpu.speed} GHz` : null],
+    [t('hardware.socket'), cpu.socket],
+    [t('hardware.temperature'), temperatures?.main === null || temperatures?.main === undefined ? t('status.notReported') : `${temperatures.main} °C`],
+    [t('hardware.coreTemperatures'), list(temperatures?.cores, (temperature) => `${temperature} °C`)],
+    [t('hardware.sensorStatus'), temperatures?.cpuSource],
   ]);
-  addSection('Memory', [
-    ['Installed', formatBytes(memory.total)],
-    ['Available', formatBytes(memory.available)],
-    ['Active', formatBytes(memory.active)],
-    ['Slots', slotSummary(memorySlots)],
-    ['Maximum capacity', formatBytes(memorySlots?.maxCapacity)],
-    ['Modules', list(memoryLayout, (module) => `${formatBytes(module.size)} ${module.type || ''} ${module.clockSpeed ? `${module.clockSpeed} MHz` : ''}`.trim())],
+  addSection(t('hardware.memory'), [
+    [t('hardware.installed'), formatBytes(memory.total)],
+    [t('hardware.available'), formatBytes(memory.available)],
+    [t('hardware.active'), formatBytes(memory.active)],
+    [t('hardware.slots'), slotSummary(memorySlots)],
+    [t('hardware.maxCapacity'), formatBytes(memorySlots?.maxCapacity)],
+    [t('hardware.modules'), list(memoryLayout, (module) => `${formatBytes(module.size)} ${module.type || ''} ${module.clockSpeed ? `${module.clockSpeed} MHz` : ''}`.trim())],
   ]);
-  addSection('Graphics', [
-    ['Controllers', list(graphics.controllers, (gpu) => `${gpu.vendor || 'Unknown'} ${gpu.model || ''}`.trim())],
-    ['VRAM', list(graphics.controllers, (gpu) => formatBytes(gpu.vram))],
-    ['Temperature', list(temperatures?.gpu, (temperature) => `${temperature} °C`)],
-    ['Power draw', list(graphics.controllers, (gpu) => gpu.powerDraw ? `${gpu.powerDraw} W` : 'Not reported')],
-    ['Displays', list(graphics.displays, (display) => `${display.model || 'Unknown'} ${display.resolutionX || '?'}x${display.resolutionY || '?'}`)],
+  addSection(t('hardware.graphics'), [
+    [t('hardware.controllers'), list(graphics.controllers, (gpu) => `${gpu.vendor || t('hardware.unknown')} ${gpu.model || ''}`.trim())],
+    [t('hardware.vram'), list(graphics.controllers, (gpu) => formatBytes(gpu.vram))],
+    [t('hardware.temperature'), list(temperatures?.gpu, (temperature) => `${temperature} °C`)],
+    [t('hardware.powerDraw'), list(graphics.controllers, (gpu) => gpu.powerDraw ? `${gpu.powerDraw} W` : t('status.notReported'))],
+    [t('hardware.displays'), list(graphics.displays, (display) => `${display.model || t('hardware.unknown')} ${display.resolutionX || '?'}x${display.resolutionY || '?'}`)],
   ]);
-  addSection('Mainboard & BIOS', [
-    ['Mainboard', `${baseboard.manufacturer || ''} ${baseboard.model || ''}`.trim()],
-    ['BIOS vendor', bios.vendor],
-    ['BIOS version', bios.version],
-    ['BIOS date', bios.releaseDate],
+  addSection(t('hardware.mainboardBios'), [
+    [t('hardware.mainboard'), `${baseboard.manufacturer || ''} ${baseboard.model || ''}`.trim()],
+    [t('hardware.biosVendor'), bios.vendor],
+    [t('hardware.biosVersion'), bios.version],
+    [t('hardware.biosDate'), bios.releaseDate],
   ]);
-  addSection('Storage', [
-    ['Physical disks', list(disks, (disk) => `${disk.name || disk.model || 'Unknown'} (${formatBytes(disk.size)})`)],
-    ['Mounted filesystems', list(filesystems, (filesystem) => `${filesystem.fs} (${formatBytes(filesystem.used)} of ${formatBytes(filesystem.size)})`)],
+  addSection(t('hardware.storage'), [
+    [t('hardware.physicalDisks'), list(disks, (disk) => `${disk.name || disk.model || t('hardware.unknown')} (${formatBytes(disk.size)})`)],
+    [t('hardware.filesystems'), list(filesystems, (filesystem) => `${filesystem.fs} (${formatBytes(filesystem.used)} / ${formatBytes(filesystem.size)})`)],
   ]);
-  addSection('PCI & device inventory', [
-    ['Detected devices', list(deviceInventory, (device) => `${device.category || 'Device'}: ${device.name || device.model || 'Unknown'}`)],
+  addSection(t('hardware.inventorySection'), [
+    [t('hardware.detectedDevices'), list(deviceInventory, (device) => `${device.category || t('hardware.unknown')}: ${device.name || device.model || t('hardware.unknown')}`)],
   ]);
-  addSection('Network & peripherals', [
-    ['Interfaces', list(network, (item) => `${item.iface || item.ifaceName || 'Unknown'}${item.ip4 ? `: ${item.ip4}` : ''}`)],
-    ['Battery', battery.hasBattery ? `${battery.percent}%${battery.isCharging ? ', charging' : ''}` : 'No battery reported'],
-    ['Audio', list(audio, (device) => device.name || device.manufacturer)],
+  addSection(t('hardware.network'), [
+    [t('hardware.interfaces'), list(network, (item) => `${item.iface || item.ifaceName || t('hardware.unknown')}${item.ip4 ? `: ${item.ip4}` : ''}`)],
+    [t('hardware.battery'), battery.hasBattery ? `${battery.percent}%${battery.isCharging ? `, ${t('hardware.charging')}` : ''}` : t('hardware.noBattery')],
+    [t('hardware.audio'), list(audio, (device) => device.name || device.manufacturer)],
   ]);
 }
 
 async function loadHardware() {
   const button = document.querySelector('#refresh');
   button.disabled = true;
-  document.querySelector('#updated-at').textContent = 'Reading hardware details...';
+  document.querySelector('#updated-at').textContent = t('app.reading');
   window.hardware.log('info', 'Renderer requested a hardware refresh.');
 
   try {
@@ -398,10 +390,9 @@ async function loadHardware() {
     window.latestSnapshot = snapshot;
     window.hardware.log('info', 'Renderer received hardware data.', { source: snapshot.source });
     render(snapshot);
-    renderDiagnosis(snapshot);
   } catch (error) {
     window.hardware.log('error', 'Renderer hardware refresh failed.', { message: error.message, stack: error.stack });
-    document.querySelector('#updated-at').textContent = `Could not read hardware details: ${error.message}`;
+    document.querySelector('#updated-at').textContent = t('hardware.readFailed', { message: error.message });
   } finally {
     button.disabled = false;
   }
@@ -418,9 +409,9 @@ async function refreshOpenAiKeyStatus() {
   const status = await window.settings.getOpenAiKeyStatus();
   const statusText = document.querySelector('#openai-key-status');
   if (!status.encryptionAvailable) {
-    statusText.textContent = 'Secure storage is unavailable on this system; the key cannot be saved.';
+    statusText.textContent = t('settings.secureUnavailable');
   } else {
-    statusText.textContent = status.hasKey ? 'A key is saved on this device.' : 'No key saved yet.';
+    statusText.textContent = status.hasKey ? t('settings.keySaved') : t('settings.noKey');
   }
 }
 
@@ -430,20 +421,35 @@ function setupSettings() {
     const input = document.querySelector('#openai-key');
     const result = await window.settings.setOpenAiKey(input.value);
     input.value = '';
-    document.querySelector('#openai-key-status').textContent = result.ok ? 'Key saved.' : `Could not save key: ${result.message}`;
+    document.querySelector('#openai-key-status').textContent = result.ok ? t('settings.saved') : t('settings.saveFailed', { message: result.message });
     await refreshOpenAiKeyStatus();
   });
   document.querySelector('#test-openai-key').addEventListener('click', async (event) => {
     event.target.disabled = true;
     const statusText = document.querySelector('#openai-key-status');
-    statusText.textContent = 'Testing connection...';
+    statusText.textContent = t('settings.testing');
     const result = await window.settings.testOpenAiConnection();
     statusText.textContent = result.message;
     event.target.disabled = false;
   });
 }
 
+function setupLocale() {
+  const localeSelect = document.querySelector('#locale');
+  localeSelect.value = getLocale();
+  localeSelect.addEventListener('change', (event) => setLocale(event.target.value));
+  window.addEventListener('localechange', () => {
+    localeSelect.value = getLocale();
+    if (window.latestSnapshot) {
+      render(window.latestSnapshot);
+    }
+    renderDiagnosisFlow();
+    refreshOpenAiKeyStatus();
+  });
+}
+
 setupNavigation();
 setupSettings();
+setupLocale();
 document.querySelector('#refresh').addEventListener('click', loadHardware);
 loadHardware();

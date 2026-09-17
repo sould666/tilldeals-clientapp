@@ -36,10 +36,7 @@ button:disabled { cursor: wait; opacity: .6; }
 .utility-note { color: #526160; font-size: 12px; }
 .utility-heading { display: flex; justify-content: space-between; gap: 20px; align-items: end; }
 .utility-heading h2 { margin-bottom: 0; }
-.diagnosis-results { max-width: 720px; margin: 24px 0; border-top: 1px solid #a5b2aa; }
-.diagnosis-row { display: flex; justify-content: space-between; gap: 20px; border-bottom: 1px solid #a5b2aa; padding: 14px 0; font-size: 12px; }
-.diagnosis-row span { color: #526160; }
-.diagnosis-flow { max-width: 900px; margin-top: 30px; }
+.diagnosis-flow { max-width: 900px; margin: 30px auto 0; }
 .diagnosis-path { color: #b34827; font-size: 12px; line-height: 1.6; }
 .diagnosis-flow h3 { font-family: Fraunces, serif; font-size: 25px; font-weight: 600; margin: 24px 0 16px; }
 .diagnosis-mode { align-items: center; display: flex; gap: 6px; color: #526160; font-size: 12px; }
@@ -55,17 +52,25 @@ button:disabled { cursor: wait; opacity: .6; }
 .diagnosis-choice { background: #faf9f4; border: 1px solid #a5b2aa; color: #1e2a2b; text-align: left; }
 .diagnosis-choice:hover { border-color: #b34827; }
 .symptoms { grid-template-columns: 1fr; }
+.diagnosis-search { animation: search-pulse 2.8s ease-in-out infinite; display: block; width: 100%; border: 1px solid #526160; border-radius: 4px; background: #faf9f4; color: #1e2a2b; font: inherit; font-size: 14px; margin: 24px 0 14px; padding: 15px 16px; }
+.diagnosis-search:focus { border-color: #b34827; box-shadow: 0 0 0 3px rgba(179, 72, 39, .14); outline: 0; }
+.diagnosis-search:focus, .diagnosis-search.has-query { animation: none; }
+@keyframes search-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(179, 72, 39, 0); } 50% { box-shadow: 0 0 0 5px rgba(179, 72, 39, .12); } }
+.diagnosis-empty { border: 1px dashed #a5b2aa; color: #526160; padding: 18px; }
 .text-action { background: transparent; border: 0; color: #b34827; padding: 0; }
 .diagnosis-steps { counter-reset: diagnosis-step; list-style: none; margin: 0; max-width: 760px; padding: 0; }
-.diagnosis-steps li { counter-increment: diagnosis-step; border-left: 2px solid #b34827; margin: 0 0 12px 12px; padding: 15px 18px; background: #faf9f4; font-size: 13px; line-height: 1.5; }
-.diagnosis-steps li::before { content: counter(diagnosis-step); color: #b34827; font-weight: 500; margin-right: 12px; }
+.diagnosis-steps li { counter-increment: diagnosis-step; align-items: flex-start; background: #faf9f4; border: 1px solid #a5b2aa; border-left: 5px solid #b34827; box-shadow: 0 8px 20px rgba(30, 42, 43, .06); display: flex; gap: 16px; margin: 0 auto 14px; padding: 20px 24px; font-size: 14px; line-height: 1.65; max-width: 700px; }
+.diagnosis-steps li::before { align-items: center; background: #b34827; border-radius: 50%; color: #faf9f4; content: counter(diagnosis-step); display: flex; flex: 0 0 28px; font-size: 12px; font-weight: 500; height: 28px; justify-content: center; margin-top: 1px; width: 28px; }
 .secondary-action { background: transparent; color: #1e2a2b; }
-.checklist-question { font-size: 15px; margin: 0 0 18px; max-width: 640px; }
-.outcome-card { background: #faf9f4; border-left: 3px solid #b34827; margin-top: 18px; max-width: 640px; padding: 20px 24px; }
+.checklist-question { background: #faf9f4; border: 1px solid #a5b2aa; border-left: 5px solid #b34827; box-shadow: 0 8px 20px rgba(30, 42, 43, .06); font-size: 16px; line-height: 1.6; margin: 0 auto 18px; max-width: 700px; padding: 22px 24px; }
+.checklist-question + .diagnosis-mode { justify-content: center; }
+.outcome-card { background: #faf9f4; border: 1px solid #a5b2aa; border-left: 5px solid #b34827; box-shadow: 0 8px 20px rgba(30, 42, 43, .06); margin: 18px auto 0; max-width: 700px; padding: 24px 28px; }
 .outcome-card h3 { margin: 6px 0 10px; }
 .setting-group { border-top: 1px solid #a5b2aa; margin-top: 24px; padding-top: 18px; }
 .setting-group h3 { font-family: Fraunces, serif; font-size: 20px; margin: 0 0 10px; }
 .setting-group .setting-row { gap: 10px; }
+.setting-group > label[for="locale"] { display: block; color: #526160; font-size: 12px; margin-bottom: 8px; }
+select { border: 1px solid #a5b2aa; background: #faf9f4; color: #1e2a2b; font: inherit; padding: 10px 12px; min-width: 160px; }
 .setting-group input[type="password"] { border: 1px solid #a5b2aa; background: #faf9f4; color: #1e2a2b; font: inherit; padding: 10px 12px; flex: 1; min-width: 220px; }
 .section { border-top: 1px solid #1e2a2b; padding-top: 14px; }
 h2 { font-size: 25px; margin: 0 0 18px; }

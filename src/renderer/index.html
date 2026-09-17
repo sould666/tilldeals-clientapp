@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,16 +10,16 @@
     <main>
       <header class="topbar">
         <div>
-          <p class="eyebrow">LOCAL SYSTEM OVERVIEW</p>
-          <h1>Machine profile</h1>
-          <p id="updated-at" class="updated">Reading hardware details...</p>
+          <p class="eyebrow" data-i18n="app.eyebrow">LOKALNY PRZEGLĄD SYSTEMU</p>
+          <h1 data-i18n="app.profile">Profil komputera</h1>
+          <p id="updated-at" class="updated" data-i18n="app.reading">Odczytywanie danych sprzętu...</p>
         </div>
         <div class="top-actions">
-          <button id="refresh" type="button">Refresh</button>
-          <nav aria-label="Application views">
-            <button class="nav-button active" data-nav="profile" type="button">Profile</button>
-            <button class="nav-button" data-nav="settings" type="button">Settings</button>
-            <button class="nav-button" data-nav="diagnosis" type="button">Manual Diagnosis</button>
+          <button id="refresh" type="button" data-i18n="action.refresh">Odśwież</button>
+          <nav data-i18n-aria-label="nav.aria" aria-label="Widoki aplikacji">
+            <button class="nav-button active" data-nav="profile" type="button" data-i18n="nav.profile">Profil</button>
+            <button class="nav-button" data-nav="settings" type="button" data-i18n="nav.settings">Ustawienia</button>
+            <button class="nav-button" data-nav="diagnosis" type="button" data-i18n="nav.diagnosis">Ręczna diagnoza</button>
           </nav>
         </div>
       </header>
@@ -28,24 +28,27 @@
         <section id="details" class="details" aria-live="polite"></section>
       </section>
       <section class="utility-view" data-view="settings" hidden>
-        <h2>Settings</h2>
-        <label class="setting-row"><input id="auto-refresh" type="checkbox" /> Refresh hardware data every 60 seconds</label>
-        <p class="utility-note">Hardware data is read locally. Nothing is uploaded by this application.</p>
+        <h2 data-i18n="settings.title">Ustawienia</h2>
+        <label class="setting-row"><input id="auto-refresh" type="checkbox" /> <span data-i18n="settings.autoRefresh">Odświeżaj dane sprzętu co 60 sekund</span></label>
+        <p class="utility-note" data-i18n="settings.localData">Dane sprzętu są odczytywane lokalnie. Aplikacja niczego nie wysyła.</p>
         <div class="setting-group">
-          <h3>OpenAI API key</h3>
-          <p class="utility-note">Used only to look up a compatible replacement part after a diagnosis. The key is encrypted on this device and never leaves it except in direct requests to OpenAI.</p>
+          <label for="locale" data-i18n="language.label">Język</label>
+          <select id="locale"><option value="pl" data-i18n="language.polish">Polski</option><option value="en" data-i18n="language.english">English</option></select>
+        </div>
+        <div class="setting-group">
+          <h3 data-i18n="settings.openAi">Klucz API OpenAI</h3>
+          <p class="utility-note" data-i18n="settings.openAiHelp">Używany wyłącznie do wyszukania zgodnego zamiennika po diagnozie. Klucz jest szyfrowany na tym urządzeniu i opuszcza je tylko w bezpośrednich żądaniach do OpenAI.</p>
           <div class="setting-row">
             <input id="openai-key" type="password" placeholder="sk-..." autocomplete="off" />
-            <button id="save-openai-key" type="button">Save</button>
-            <button id="test-openai-key" class="secondary-action" type="button">Test connection</button>
+            <button id="save-openai-key" type="button" data-i18n="settings.save">Zapisz</button>
+            <button id="test-openai-key" class="secondary-action" type="button" data-i18n="settings.test">Testuj połączenie</button>
           </div>
           <p id="openai-key-status" class="utility-note"></p>
         </div>
       </section>
       <section class="utility-view" data-view="diagnosis" hidden>
-        <div class="utility-heading"><div><p class="eyebrow">TROUBLESHOOTING</p><h2>Manual Diagnosis</h2></div><button id="back-to-profile" type="button">Back to profile</button></div>
+        <div class="utility-heading"><div><p class="eyebrow" data-i18n="diagnosis.eyebrow">ROZWIĄZYWANIE PROBLEMÓW</p><h2 data-i18n="diagnosis.title">Ręczna diagnoza</h2></div><button id="back-to-profile" type="button" data-i18n="action.backProfile">Wróć do profilu</button></div>
         <div id="diagnosis-flow" class="diagnosis-flow"></div>
-        <div id="diagnosis-results" class="diagnosis-results"></div>
       </section>
     </main>
     <template id="section-template">
@@ -54,8 +57,10 @@
         <dl></dl>
       </article>
     </template>
+    <script src="i18n.js"></script>
     <script src="diagnosis-tree.js"></script>
     <script src="diagnosis-outcomes.js"></script>
     <script src="renderer.js"></script>
+    <script>setLocale(getLocale());</script>
   </body>
 </html>

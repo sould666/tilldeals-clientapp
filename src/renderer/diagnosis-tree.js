@@ -1,22 +1,22 @@
 const DIAGNOSIS_AREAS = [
   {
     id: 'computer',
-    name: 'Computer',
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></svg>',
+    name: 'Komputer',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M9 2v5M12 2v5M15 2v5M9 17v5M12 17v5M15 17v5M2 9h5M2 12h5M2 15h5M17 9h5M17 12h5M17 15h5"/></svg>',
   },
   {
     id: 'devices',
-    name: 'Installed Devices',
+    name: 'Urządzenia',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3v3M15 3v3M6 8h12v7a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V8Z"/><path d="M9 21v-3M15 21v-3"/></svg>',
   },
   {
     id: 'screens',
-    name: 'Screens',
+    name: 'Monitory',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="12" rx="1"/><path d="M9 21h6M12 17v4"/></svg>',
   },
   {
     id: 'software',
-    name: 'Software',
+    name: 'Oprogramowanie',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 8h18M7 6h.01"/></svg>',
   },
 ];
@@ -35,7 +35,7 @@ const DIAGNOSIS_TREE = [
   {
     name: 'Grafika / monitory',
     area: 'screens',
-    symptoms: ['Obraz się przycina', 'Monitor migocze', 'Monitor okresowo gaśnie', 'Pojawia się „No Signal”', 'Jeden z monitorów się rozłącza', 'Problem występuje przy kilku monitorach', 'Nie można ustawić właściwej rozdzielczości', 'Nie można ustawić właściwego odświeżania', 'Pojawiają się artefakty graficzne', 'Obraz jest zniekształcony', 'Ekran robi się czarny podczas gry/programu'],
+    symptoms: ['Obraz jest przycięty', 'Monitor migocze', 'Monitor okresowo gaśnie', 'Pojawia się „No Signal”', 'Jeden z monitorów się rozłącza', 'Problem występuje przy kilku monitorach', 'Nie można ustawić właściwej rozdzielczości', 'Nie można ustawić właściwego odświeżania', 'Pojawiają się artefakty graficzne', 'Obraz jest zniekształcony', 'Ekran robi się czarny podczas gry/programu'],
   },
   {
     name: 'Dysk / pliki',
