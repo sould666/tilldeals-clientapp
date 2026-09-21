@@ -4,6 +4,8 @@ const byteFormatter = new Intl.NumberFormat(undefined, {
 
 let refreshTimer;
 const diagnosisState = { mode: 'amateur', area: null, symptom: null, query: '', checkIndex: 0, outcome: null };
+let tillDealsTransferObject = null;
+let tillDealsRows = new Map();
 
 function formatBytes(value) {
   if (!Number.isFinite(value) || value <= 0) return t('status.notReported');
@@ -31,6 +33,20 @@ function slotSummary(memorySlots) {
   return t('status.usedSlots', { used: memorySlots.used ?? t('hardware.unknown'), total: memorySlots.total ?? t('hardware.unknown') });
 }
 
+function currentViewName() {
+  return document.querySelector('.nav-button.active')?.dataset.nav || 'profile';
+}
+
+function updateMainHeading(viewName = currentViewName()) {
+  const heading = document.querySelector('#main-heading');
+  if (viewName === 'tilldeals') {
+    heading.hidden = true;
+    return;
+  }
+  heading.hidden = false;
+  heading.textContent = t(`app.heading.${viewName}`);
+}
+
 function addSection(title, entries) {
   const template = document.querySelector('#section-template');
   const section = template.content.cloneNode(true);
@@ -55,6 +71,7 @@ function showView(viewName) {
   document.querySelectorAll('[data-nav]').forEach((button) => {
     button.classList.toggle('active', button.dataset.nav === viewName);
   });
+  updateMainHeading(viewName);
 }
 
 function diagnosisSteps(category, symptom, mode) {
@@ -257,6 +274,17 @@ function renderChecklistWizard(target, outcomeData) {
 
 function renderOutcomeCard(target, outcome) {
   const card = document.createElement('div');
+  if (outcome.type === 'resolved') {
+    card.className = 'outcome-card resolved';
+    card.innerHTML = `
+      <p class="eyebrow">${t('diagnosis.resolvedWithoutReplacement')}</p>
+      <h3>${present(outcome.label)}</h3>
+      <p>${present(outcome.resolution)}</p>
+    `;
+    target.append(card);
+    return;
+  }
+
   card.className = 'outcome-card';
   card.innerHTML = `
     <p class="eyebrow">${t('diagnosis.suggestedReplacement')}</p>
@@ -275,6 +303,7 @@ async function findReplacementDevice(outcome, button, resultElement) {
   resultElement.textContent = t('diagnosis.searching');
   try {
     const response = await window.llm.findReplacementDevice({
+      type: outcome.type,
       component: outcome.component,
       label: outcome.label,
       reason: outcome.reason,
@@ -286,6 +315,212 @@ async function findReplacementDevice(outcome, button, resultElement) {
   } finally {
     button.disabled = false;
   }
+}
+
+async function chooseTillDealsUpgrade() {
+  const button = document.querySelector('#tilldeals-ai-button');
+  const status = document.querySelector('#tilldeals-status');
+  const output = document.querySelector('#tilldeals-json');
+  const result = document.querySelector('#tilldeals-result');
+  const spendingTier = currentSpendingTier();
+  const snapshot = window.latestSnapshot;
+
+  if (!snapshot) {
+    status.textContent = t('tilldeals.noSnapshot');
+    return;
+  }
+
+  button.disabled = true;
+  status.textContent = t('tilldeals.searching');
+  output.hidden = true;
+  output.textContent = '';
+  result.hidden = true;
+
+  try {
+    const response = await window.llm.chooseBestHardwareUpgrade({
+      hardwareSnapshot: snapshot,
+      locale: getLocale(),
+      spendingTier,
+    });
+    if (!response.ok) {
+      status.textContent = t('tilldeals.failed', { message: response.message });
+      return;
+    }
+    tillDealsTransferObject = response.transferObject;
+    renderTillDealsTable(tillDealsTransferObject);
+    output.textContent = JSON.stringify(tillDealsTransferObject, null, 2);
+    output.hidden = false;
+    status.textContent = t('tilldeals.ready');
+  } catch (error) {
+    status.textContent = t('tilldeals.failed', { message: error.message });
+  } finally {
+    button.disabled = false;
+  }
+}
+
+const TILLDEALS_TIER_ORDER = ['cheap', 'moderate', 'expensive', 'takeMyMoney'];
+
+function currentSpendingTier() {
+  const slider = document.querySelector('#spending-tier');
+  return TILLDEALS_TIER_ORDER[Number(slider.value)] || 'moderate';
+}
+
+function updateSpendingTierLabel() {
+  document.querySelector('#spending-tier-value').textContent = t(`tilldeals.tier.${currentSpendingTier()}`);
+}
+
+function dependencyText(dependsOn) {
+  if (!dependsOn || !dependsOn.length) return '\u2014';
+  return `${t('tilldeals.dependsOnPrefix')}${dependsOn.join(', ')}`;
+}
+
+function renderTierSlider(tier) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tier-slider';
+  if (!tier) {
+    wrap.classList.add('tier-slider-empty');
+    wrap.textContent = present(null);
+    return wrap;
+  }
+  const activeIndex = TILLDEALS_TIER_ORDER.indexOf(tier);
+  TILLDEALS_TIER_ORDER.forEach((step, index) => {
+    const dot = document.createElement('span');
+    dot.className = 'tier-step';
+    if (index <= activeIndex) dot.classList.add('filled');
+    dot.title = t(`tilldeals.tier.${step}`);
+    wrap.append(dot);
+  });
+  const labelEl = document.createElement('span');
+  labelEl.className = 'tier-label';
+  labelEl.textContent = t(`tilldeals.tier.${tier}`);
+  wrap.append(labelEl);
+  return wrap;
+}
+
+function toggleMarkedRow(key) {
+  const rowInfo = tillDealsRows.get(key);
+  if (!rowInfo || rowInfo.tracked) return;
+  rowInfo.selected = !rowInfo.selected;
+  rowInfo.row.classList.toggle('row-marked', rowInfo.selected);
+  rowInfo.button.textContent = rowInfo.selected ? t('tilldeals.marked') : t('tilldeals.markToTrack');
+}
+
+function renderTillDealsTable(transferObject) {
+  const result = document.querySelector('#tilldeals-result');
+  const body = document.querySelector('#tilldeals-table-body');
+  const propositions = Array.isArray(transferObject?.recommendation?.propositions) ? transferObject.recommendation.propositions : [];
+  body.replaceChildren();
+  tillDealsRows = new Map();
+  document.querySelector('#tilldeals-track-status').textContent = '';
+  document.querySelector('#tilldeals-tracking-json').hidden = true;
+  document.querySelector('#tilldeals-tracking-json').textContent = '';
+
+  propositions.slice(0, 4).forEach((proposal, index) => {
+    const fields = proposal.fields || {};
+    const additional = [fields.additional1, fields.additional2].filter(Boolean).join(', ');
+    const trackItems = [
+      fields.processor,
+      fields.motherboard,
+      fields.ram,
+      fields.drives,
+      fields.monitor,
+      fields.additional1,
+      fields.additional2,
+    ].filter(Boolean);
+    const tableRow = document.createElement('tr');
+    [
+      `${proposal.rank || index + 1}. ${proposal.title || t('status.notReported')}`,
+      present(fields.processor),
+      present(fields.motherboard),
+      present(fields.ram),
+      present(fields.drives),
+      present(fields.monitor),
+      present(additional),
+    ].forEach((value) => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      tableRow.append(cell);
+    });
+
+    const tierCell = document.createElement('td');
+    tierCell.append(renderTierSlider(proposal.tier));
+    tableRow.append(tierCell);
+
+    const dependencyCell = document.createElement('td');
+    dependencyCell.textContent = dependencyText(proposal.requiresPairing);
+    tableRow.append(dependencyCell);
+
+    const reasonCell = document.createElement('td');
+    reasonCell.textContent = present(proposal.reason);
+    tableRow.append(reasonCell);
+
+    const actionCell = document.createElement('td');
+    if (trackItems.length) {
+      const rowKey = `proposal-${proposal.rank || index + 1}`;
+      const button = makeActionButton(t('tilldeals.markToTrack'), 'secondary-action trace-add', () => toggleMarkedRow(rowKey));
+      actionCell.append(button);
+      tillDealsRows.set(rowKey, {
+        button,
+        row: tableRow,
+        selected: false,
+        tracked: false,
+        entryData: {
+          key: rowKey,
+          title: proposal.title,
+          tier: proposal.tier,
+          reason: proposal.reason,
+          items: trackItems,
+        },
+      });
+    }
+    tableRow.append(actionCell);
+    body.append(tableRow);
+  });
+
+  result.hidden = body.children.length === 0;
+}
+
+async function addMarkedItemsToTracking() {
+  const status = document.querySelector('#tilldeals-track-status');
+  const output = document.querySelector('#tilldeals-tracking-json');
+  const selected = Array.from(tillDealsRows.values()).filter((rowInfo) => rowInfo.selected && !rowInfo.tracked);
+
+  if (!selected.length) {
+    status.textContent = t('tilldeals.trackNoneSelected');
+    return;
+  }
+
+  status.textContent = t('tilldeals.trackSaving');
+  try {
+    const response = await window.tilldeals.addTrackedItems(selected.map((rowInfo) => rowInfo.entryData));
+    if (!response.ok) {
+      status.textContent = t('tilldeals.trackFailed', { message: response.message });
+      return;
+    }
+    selected.forEach((rowInfo) => {
+      rowInfo.tracked = true;
+      rowInfo.selected = false;
+      rowInfo.button.disabled = true;
+      rowInfo.button.textContent = t('tilldeals.tracked');
+      rowInfo.row.classList.remove('row-marked');
+      rowInfo.row.classList.add('row-tracked');
+    });
+    output.textContent = JSON.stringify(response.trackingPayload, null, 2);
+    output.hidden = false;
+    status.textContent = t('tilldeals.trackSaved');
+  } catch (error) {
+    status.textContent = t('tilldeals.trackFailed', { message: error.message });
+  }
+}
+
+async function loadLastTillDealsRecommendation() {
+  const transferObject = await window.tilldeals.getLastRecommendation();
+  if (!transferObject) return;
+  tillDealsTransferObject = transferObject;
+  renderTillDealsTable(transferObject);
+  document.querySelector('#tilldeals-json').textContent = JSON.stringify(transferObject, null, 2);
+  document.querySelector('#tilldeals-json').hidden = false;
+  document.querySelector('#tilldeals-status').textContent = t('tilldeals.lastSaved');
 }
 
 function setupNavigation() {
@@ -434,14 +669,34 @@ function setupSettings() {
   });
 }
 
+function setupTillDeals() {
+  document.querySelectorAll('.global-logo-bar').forEach((wrap) => {
+    const img = wrap.querySelector('img');
+    img.addEventListener('error', () => wrap.classList.add('logo-missing'));
+    if (img.complete && img.naturalWidth === 0) {
+      wrap.classList.add('logo-missing');
+    }
+  });
+  const spendingSlider = document.querySelector('#spending-tier');
+  spendingSlider.addEventListener('input', updateSpendingTierLabel);
+  updateSpendingTierLabel();
+  document.querySelector('#tilldeals-ai-button').addEventListener('click', chooseTillDealsUpgrade);
+  document.querySelector('#tilldeals-track-button').addEventListener('click', addMarkedItemsToTracking);
+  loadLastTillDealsRecommendation();
+}
+
 function setupLocale() {
   const localeSelect = document.querySelector('#locale');
   localeSelect.value = getLocale();
   localeSelect.addEventListener('change', (event) => setLocale(event.target.value));
   window.addEventListener('localechange', () => {
     localeSelect.value = getLocale();
+    updateMainHeading();
     if (window.latestSnapshot) {
       render(window.latestSnapshot);
+    }
+    if (tillDealsTransferObject) {
+      renderTillDealsTable(tillDealsTransferObject);
     }
     renderDiagnosisFlow();
     refreshOpenAiKeyStatus();
@@ -450,6 +705,7 @@ function setupLocale() {
 
 setupNavigation();
 setupSettings();
+setupTillDeals();
 setupLocale();
 document.querySelector('#refresh').addEventListener('click', loadHardware);
 loadHardware();

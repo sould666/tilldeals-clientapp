@@ -13,4 +13,11 @@ contextBridge.exposeInMainWorld('settings', {
 
 contextBridge.exposeInMainWorld('llm', {
   findReplacementDevice: (payload) => ipcRenderer.invoke('llm:findReplacementDevice', payload),
+  chooseBestHardwareUpgrade: (payload) => ipcRenderer.invoke('llm:chooseBestHardwareUpgrade', payload),
+});
+
+contextBridge.exposeInMainWorld('tilldeals', {
+  getLastRecommendation: () => ipcRenderer.invoke('tilldeals:getLastRecommendation'),
+  getTrackedItems: () => ipcRenderer.invoke('tilldeals:getTrackedItems'),
+  addTrackedItems: (entries) => ipcRenderer.invoke('tilldeals:addTrackedItems', entries),
 });

@@ -8,10 +8,14 @@
   </head>
   <body>
     <main>
+      <div class="global-logo-bar" aria-label="TillDeals logo">
+        <img src="logo.svg" alt="TillDeals" class="global-logo" />
+        <span class="global-logo-fallback">TillDeals</span>
+      </div>
       <header class="topbar">
         <div>
           <p class="eyebrow" data-i18n="app.eyebrow">LOKALNY PRZEGLĄD SYSTEMU</p>
-          <h1 data-i18n="app.profile">Profil komputera</h1>
+          <h1 id="main-heading">Profil komputera</h1>
           <p id="updated-at" class="updated" data-i18n="app.reading">Odczytywanie danych sprzętu...</p>
         </div>
         <div class="top-actions">
@@ -20,6 +24,7 @@
             <button class="nav-button active" data-nav="profile" type="button" data-i18n="nav.profile">Profil</button>
             <button class="nav-button" data-nav="settings" type="button" data-i18n="nav.settings">Ustawienia</button>
             <button class="nav-button" data-nav="diagnosis" type="button" data-i18n="nav.diagnosis">Ręczna diagnoza</button>
+            <button class="nav-button" data-nav="tilldeals" type="button" data-i18n="nav.tilldeals">TillDeals</button>
           </nav>
         </div>
       </header>
@@ -49,6 +54,44 @@
       <section class="utility-view" data-view="diagnosis" hidden>
         <div class="utility-heading"><div><p class="eyebrow" data-i18n="diagnosis.eyebrow">ROZWIĄZYWANIE PROBLEMÓW</p><h2 data-i18n="diagnosis.title">Ręczna diagnoza</h2></div><button id="back-to-profile" type="button" data-i18n="action.backProfile">Wróć do profilu</button></div>
         <div id="diagnosis-flow" class="diagnosis-flow"></div>
+      </section>
+      <section class="utility-view tilldeals-view" data-view="tilldeals" hidden>
+        <div class="utility-heading"><div><p class="eyebrow" data-i18n="tilldeals.eyebrow">REKOMENDACJA OFERTY</p><h2 data-i18n="tilldeals.title">Analiza ulepszeń</h2></div></div>
+        <p class="utility-note" data-i18n="tilldeals.help">AI oceni obecny zestaw i peryferia, wybierze najtańszy sensowny upgrade oraz przygotuje obiekt JSON do wysłania przez API.</p>
+        <div class="tilldeals-spending">
+          <label for="spending-tier" data-i18n="tilldeals.spendingLabel">Poziom wydatków</label>
+          <input id="spending-tier" type="range" min="0" max="3" step="1" value="1" />
+          <p id="spending-tier-value" class="utility-note"></p>
+        </div>
+        <button id="tilldeals-ai-button" type="button" data-i18n="tilldeals.chooseButton">Let AI choose better hardware</button>
+        <p id="tilldeals-status" class="utility-note"></p>
+        <div id="tilldeals-result" class="upgrade-result" hidden>
+          <h3 data-i18n="tilldeals.tableTitle">4 propozycje ulepszeń</h3>
+          <div class="upgrade-table-wrap">
+            <table class="upgrade-table">
+              <thead>
+                <tr>
+                  <th data-i18n="tilldeals.colProposition">Propozycja</th>
+                  <th data-i18n="tilldeals.colProcessor">Procesor</th>
+                  <th data-i18n="tilldeals.colMotherboard">Płyta główna</th>
+                  <th data-i18n="tilldeals.colRam">RAM</th>
+                  <th data-i18n="tilldeals.colDrives">Dyski</th>
+                  <th data-i18n="tilldeals.colMonitor">Monitor</th>
+                  <th data-i18n="tilldeals.colAdditional">Dodatkowy sprzęt</th>
+                  <th data-i18n="tilldeals.colTier">Poziom kosztu</th>
+                  <th data-i18n="tilldeals.colDependencies">Zależności</th>
+                  <th data-i18n="tilldeals.reasonColumn">Powód</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="tilldeals-table-body"></tbody>
+            </table>
+          </div>
+          <button id="tilldeals-track-button" type="button" class="secondary-action" data-i18n="tilldeals.trackButton">Dodaj oznaczone do śledzenia</button>
+          <p id="tilldeals-track-status" class="utility-note"></p>
+          <pre id="tilldeals-tracking-json" class="json-output" hidden></pre>
+        </div>
+        <pre id="tilldeals-json" class="json-output" hidden></pre>
       </section>
     </main>
     <template id="section-template">
