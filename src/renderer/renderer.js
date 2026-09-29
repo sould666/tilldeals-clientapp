@@ -359,6 +359,15 @@ async function chooseTillDealsUpgrade() {
 }
 
 const TILLDEALS_TIER_ORDER = ['cheap', 'moderate', 'expensive', 'takeMyMoney'];
+const TILLDEALS_FIELD_ROWS = [
+  { key: 'processor', labelKey: 'tilldeals.cat.cpu' },
+  { key: 'motherboard', labelKey: 'tilldeals.cat.motherboard' },
+  { key: 'ram', labelKey: 'tilldeals.cat.ram' },
+  { key: 'drives', labelKey: 'tilldeals.cat.storage' },
+  { key: 'monitor', labelKey: 'tilldeals.cat.display' },
+  { key: 'additional1', labelKey: 'tilldeals.cat.extra1' },
+  { key: 'additional2', labelKey: 'tilldeals.cat.extra2' },
+];
 
 function currentSpendingTier() {
   const slider = document.querySelector('#spending-tier');
@@ -374,106 +383,134 @@ function dependencyText(dependsOn) {
   return `${t('tilldeals.dependsOnPrefix')}${dependsOn.join(', ')}`;
 }
 
-function renderTierSlider(tier) {
-  const wrap = document.createElement('div');
-  wrap.className = 'tier-slider';
-  if (!tier) {
-    wrap.classList.add('tier-slider-empty');
-    wrap.textContent = present(null);
-    return wrap;
+function summarizeCurrentField(currentSetup, fieldKey) {
+  const liveSnapshot = window.latestSnapshot;
+  const storageText = Array.isArray(liveSnapshot?.disks) && liveSnapshot.disks.length
+    ? liveSnapshot.disks.map((item) => item.name || item.model || t('hardware.unknown')).join(', ')
+    : Array.isArray(currentSetup?.storage) && currentSetup.storage.length
+      ? currentSetup.storage.map((item) => item.name || t('hardware.unknown')).join(', ')
+    : null;
+  const displayText = Array.isArray(liveSnapshot?.graphics?.displays) && liveSnapshot.graphics.displays.length
+    ? liveSnapshot.graphics.displays.map((item) => item.model || t('hardware.unknown')).join(', ')
+    : Array.isArray(currentSetup?.displays) && currentSetup.displays.length
+      ? currentSetup.displays.map((item) => item.model || t('hardware.unknown')).join(', ')
+    : null;
+
+  switch (fieldKey) {
+    case 'processor':
+      return liveSnapshot?.cpu?.brand || currentSetup?.cpuBrand || null;
+    case 'motherboard':
+      return `${liveSnapshot?.baseboard?.manufacturer || ''} ${liveSnapshot?.baseboard?.model || ''}`.trim() || currentSetup?.motherboard || null;
+    case 'ram':
+      return currentSetup?.ramProfile?.modulesSummary
+        || (liveSnapshot?.memory?.total ? formatBytes(liveSnapshot.memory.total) : (currentSetup?.memoryTotalBytes ? formatBytes(currentSetup.memoryTotalBytes) : null));
+    case 'drives':
+      return storageText;
+    case 'monitor':
+      return displayText;
+    default:
+      return null;
   }
-  const activeIndex = TILLDEALS_TIER_ORDER.indexOf(tier);
-  TILLDEALS_TIER_ORDER.forEach((step, index) => {
-    const dot = document.createElement('span');
-    dot.className = 'tier-step';
-    if (index <= activeIndex) dot.classList.add('filled');
-    dot.title = t(`tilldeals.tier.${step}`);
-    wrap.append(dot);
-  });
-  const labelEl = document.createElement('span');
-  labelEl.className = 'tier-label';
-  labelEl.textContent = t(`tilldeals.tier.${tier}`);
-  wrap.append(labelEl);
-  return wrap;
+}
+
+function isNullLikeText(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return !normalized || ['null', 'none', 'n/a', 'na', '-', 'brak', 'brak danych'].includes(normalized);
+}
+
+function proposalDescription(proposal) {
+  const parts = [];
+  if (proposal?.tier) parts.push(t(`tilldeals.tier.${proposal.tier}`));
+  if (proposal?.estimatedTotalCost) parts.push(`${getLocale() === 'pl' ? 'Szacowany koszt' : 'Estimated cost'}: ${proposal.estimatedTotalCost}`);
+  if (proposal?.estimatedRange) parts.push(proposal.estimatedRange);
+  if (proposal?.requiresPairing?.length) parts.push(dependencyText(proposal.requiresPairing));
+  if (proposal?.reason) parts.push(proposal.reason);
+  return parts.join(' | ');
 }
 
 function toggleMarkedRow(key) {
   const rowInfo = tillDealsRows.get(key);
   if (!rowInfo || rowInfo.tracked) return;
   rowInfo.selected = !rowInfo.selected;
-  rowInfo.row.classList.toggle('row-marked', rowInfo.selected);
-  rowInfo.button.textContent = rowInfo.selected ? t('tilldeals.marked') : t('tilldeals.markToTrack');
+  rowInfo.cell.classList.toggle('cell-marked', rowInfo.selected);
+  rowInfo.button.textContent = rowInfo.selected ? '✓' : '+';
+}
+
+function buildTrackCell(value, key) {
+  const cell = document.createElement('td');
+  const rawValue = typeof value === 'string' ? value : value?.value;
+  const rawCost = value && typeof value === 'object' ? value.estimatedCost : null;
+  const normalizedValue = isNullLikeText(rawValue) ? null : rawValue;
+  const normalizedCost = isNullLikeText(rawCost) ? null : rawCost;
+  if (!normalizedValue) {
+    cell.textContent = '\u2014';
+    return cell;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'track-cell';
+
+  const valueWrap = document.createElement('span');
+  valueWrap.textContent = normalizedCost ? `${normalizedValue} (${normalizedCost})` : normalizedValue;
+
+  const button = makeActionButton('+', 'trace-add-inline', () => toggleMarkedRow(key));
+  button.title = t('tilldeals.markToTrack');
+
+  wrapper.append(valueWrap, button);
+  cell.append(wrapper);
+
+  tillDealsRows.set(key, {
+    button,
+    cell,
+    selected: false,
+    tracked: false,
+    entryData: {
+      key,
+      items: [normalizedValue],
+    },
+  });
+
+  return cell;
 }
 
 function renderTillDealsTable(transferObject) {
   const result = document.querySelector('#tilldeals-result');
   const body = document.querySelector('#tilldeals-table-body');
-  const propositions = Array.isArray(transferObject?.recommendation?.propositions) ? transferObject.recommendation.propositions : [];
+  const singleProposition = transferObject?.recommendation?.proposition
+    || (Array.isArray(transferObject?.recommendation?.propositions) ? transferObject.recommendation.propositions[0] : null)
+    || null;
+  const currentSetup = transferObject?.currentSetup || {};
+  const proposal = singleProposition || { fields: {}, reason: '', requiresPairing: [], tier: null, estimatedTotalCost: '', estimatedRange: '' };
+  const descriptionValue = proposalDescription(proposal);
+
   body.replaceChildren();
   tillDealsRows = new Map();
   document.querySelector('#tilldeals-track-status').textContent = '';
   document.querySelector('#tilldeals-tracking-json').hidden = true;
   document.querySelector('#tilldeals-tracking-json').textContent = '';
 
-  propositions.slice(0, 4).forEach((proposal, index) => {
-    const fields = proposal.fields || {};
-    const additional = [fields.additional1, fields.additional2].filter(Boolean).join(', ');
-    const trackItems = [
-      fields.processor,
-      fields.motherboard,
-      fields.ram,
-      fields.drives,
-      fields.monitor,
-      fields.additional1,
-      fields.additional2,
-    ].filter(Boolean);
+  TILLDEALS_FIELD_ROWS.forEach((fieldRow, rowIndex) => {
     const tableRow = document.createElement('tr');
-    [
-      `${proposal.rank || index + 1}. ${proposal.title || t('status.notReported')}`,
-      present(fields.processor),
-      present(fields.motherboard),
-      present(fields.ram),
-      present(fields.drives),
-      present(fields.monitor),
-      present(additional),
-    ].forEach((value) => {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      tableRow.append(cell);
-    });
+    const fieldNameCell = document.createElement('td');
+    fieldNameCell.textContent = t(fieldRow.labelKey);
+    tableRow.append(fieldNameCell);
 
-    const tierCell = document.createElement('td');
-    tierCell.append(renderTierSlider(proposal.tier));
-    tableRow.append(tierCell);
+    const currentCell = document.createElement('td');
+    currentCell.textContent = present(summarizeCurrentField(currentSetup, fieldRow.key));
+    tableRow.append(currentCell);
 
-    const dependencyCell = document.createElement('td');
-    dependencyCell.textContent = dependencyText(proposal.requiresPairing);
-    tableRow.append(dependencyCell);
+    const proposalValue = proposal?.fields?.[fieldRow.key] || null;
+    const trackKey = `proposal-1-${fieldRow.key}`;
+    tableRow.append(buildTrackCell(proposalValue, trackKey));
 
-    const reasonCell = document.createElement('td');
-    reasonCell.textContent = present(proposal.reason);
-    tableRow.append(reasonCell);
-
-    const actionCell = document.createElement('td');
-    if (trackItems.length) {
-      const rowKey = `proposal-${proposal.rank || index + 1}`;
-      const button = makeActionButton(t('tilldeals.markToTrack'), 'secondary-action trace-add', () => toggleMarkedRow(rowKey));
-      actionCell.append(button);
-      tillDealsRows.set(rowKey, {
-        button,
-        row: tableRow,
-        selected: false,
-        tracked: false,
-        entryData: {
-          key: rowKey,
-          title: proposal.title,
-          tier: proposal.tier,
-          reason: proposal.reason,
-          items: trackItems,
-        },
-      });
+    if (rowIndex === 0) {
+      const descriptionCell = document.createElement('td');
+      descriptionCell.className = 'proposal-description-cell';
+      descriptionCell.rowSpan = TILLDEALS_FIELD_ROWS.length;
+      descriptionCell.textContent = present(descriptionValue);
+      tableRow.append(descriptionCell);
     }
-    tableRow.append(actionCell);
+
     body.append(tableRow);
   });
 
@@ -501,9 +538,9 @@ async function addMarkedItemsToTracking() {
       rowInfo.tracked = true;
       rowInfo.selected = false;
       rowInfo.button.disabled = true;
-      rowInfo.button.textContent = t('tilldeals.tracked');
-      rowInfo.row.classList.remove('row-marked');
-      rowInfo.row.classList.add('row-tracked');
+      rowInfo.button.textContent = '✓';
+      rowInfo.cell.classList.remove('cell-marked');
+      rowInfo.cell.classList.add('cell-tracked');
     });
     output.textContent = JSON.stringify(response.trackingPayload, null, 2);
     output.hidden = false;
@@ -625,6 +662,9 @@ async function loadHardware() {
     window.latestSnapshot = snapshot;
     window.hardware.log('info', 'Renderer received hardware data.', { source: snapshot.source });
     render(snapshot);
+    if (tillDealsTransferObject) {
+      renderTillDealsTable(tillDealsTransferObject);
+    }
   } catch (error) {
     window.hardware.log('error', 'Renderer hardware refresh failed.', { message: error.message, stack: error.stack });
     document.querySelector('#updated-at').textContent = t('hardware.readFailed', { message: error.message });

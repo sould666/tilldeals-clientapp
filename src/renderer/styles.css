@@ -82,18 +82,21 @@ button:disabled { cursor: wait; opacity: .6; }
 .upgrade-result h3 { font-family: Fraunces, serif; font-size: 21px; margin: 0 0 12px; }
 .upgrade-table-wrap { overflow-x: auto; }
 .upgrade-table { border-collapse: collapse; width: 100%; }
-.upgrade-table th, .upgrade-table td { border: 1px solid #333f3b; padding: 12px 14px; text-align: left; vertical-align: top; }
-.upgrade-table th { background: #20302c; color: #e7e5da; font-size: 11px; font-weight: 500; }
-.upgrade-table td { background: #1b2422; font-size: 12px; line-height: 1.5; }
-.upgrade-table tr.row-marked td { background: #26332c; }
-.upgrade-table tr.row-tracked td { background: #1d2e26; }
+.upgrade-table th, .upgrade-table td { border: 1px solid #333f3b; padding: 8px 10px; text-align: left; vertical-align: top; }
+.upgrade-table th { background: #20302c; color: #e7e5da; font-size: 10px; font-weight: 500; }
+.upgrade-table td { background: #1b2422; font-size: 11px; line-height: 1.35; }
+.proposal-description-cell { min-width: 280px; width: 32%; }
+.track-cell { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; }
+.track-cell span { overflow-wrap: anywhere; }
+.trace-add-inline { background: #35b369; border-color: #35b369; color: #0f1814; flex: 0 0 auto; font-size: 15px; line-height: 1; min-width: 28px; padding: 3px 8px; }
+.trace-add-inline:disabled { background: #2f6e49; border-color: #2f6e49; color: #d7f3e3; opacity: 1; }
+.upgrade-table td.cell-marked { background: #23362b; }
+.upgrade-table td.cell-tracked { background: #1d2e26; }
 .tier-slider { align-items: center; display: flex; gap: 4px; }
 .tier-slider-empty { color: #97a79f; }
 .tier-step { background: #333f3b; border-radius: 2px; display: block; height: 8px; width: 16px; }
 .tier-step.filled { background: #e2703f; }
 .tier-label { color: #97a79f; font-size: 11px; margin-left: 6px; }
-.trace-add { padding: 4px 10px; font-size: 14px; line-height: 1; }
-.trace-add:disabled { background: #333f3b; border-color: #333f3b; color: #97a79f; }
 #tilldeals-track-button { margin-top: 18px; }
 .json-output { background: #0c1112; border: 1px solid #333f3b; color: #e5eee8; font: 12px/1.6 "DM Mono", monospace; margin-top: 20px; max-height: 520px; overflow: auto; padding: 18px; white-space: pre-wrap; }
 .setting-group { border-top: 1px solid #333f3b; margin-top: 24px; padding-top: 18px; }
