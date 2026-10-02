@@ -35,7 +35,12 @@ jobs:
           $installer = Get-ChildItem dist -Filter '*-Setup-*.exe' | Select-Object -First 1
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLower()
           "$hash  $($installer.Name)" | Out-File -Encoding ascii "dist/$($installer.Name).sha256"
+          $latestInstaller = Join-Path $installer.DirectoryName 'TillDeals-Hardware-Setup-latest-win-x64.exe'
+          Copy-Item $installer.FullName $latestInstaller
+          $latestHash = (Get-FileHash $latestInstaller -Algorithm SHA256).Hash.ToLower()
+          "$latestHash  $([System.IO.Path]::GetFileName($latestInstaller))" | Out-File -Encoding ascii "$latestInstaller.sha256"
           "installer=dist/$($installer.Name)" >> $env:GITHUB_OUTPUT
+          "latestInstaller=dist/$([System.IO.Path]::GetFileName($latestInstaller))" >> $env:GITHUB_OUTPUT
           "name=$($installer.Name)" >> $env:GITHUB_OUTPUT
           "sha256=$hash" >> $env:GITHUB_OUTPUT
 
@@ -45,6 +50,8 @@ jobs:
           path: |
             ${{ steps.checksum.outputs.installer }}
             ${{ steps.checksum.outputs.installer }}.sha256
+            ${{ steps.checksum.outputs.latestInstaller }}
+            ${{ steps.checksum.outputs.latestInstaller }}.sha256
 
       - name: Publish 'latest' release
         shell: bash
@@ -55,6 +62,8 @@ jobs:
           gh release create latest \
             "${{ steps.checksum.outputs.installer }}" \
             "${{ steps.checksum.outputs.installer }}.sha256" \
+            "${{ steps.checksum.outputs.latestInstaller }}" \
+            "${{ steps.checksum.outputs.latestInstaller }}.sha256" \
             --target "${{ github.sha }}" \
             --prerelease \
             --title "Latest build (${{ steps.checksum.outputs.name }})" \

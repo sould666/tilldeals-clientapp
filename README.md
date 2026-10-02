@@ -4,6 +4,10 @@ Local hardware overview built with Electron. It reads CPU, memory, graphics, sto
 
 The app detects its operating environment. A native Windows build reads Windows hardware directly. When the development app runs inside WSL2, it queries the Windows host through PowerShell/CIM so the result is not limited to the WSL virtual machine. A native Linux build uses the local Linux data exposed by `systeminformation`.
 
+## Download for Windows
+
+[Download the latest Windows installer](https://github.com/sould666/tilldeals-clientapp/releases/download/latest/TillDeals-Hardware-Setup-latest-win-x64.exe) or [view all releases](https://github.com/sould666/tilldeals-clientapp/releases). The installer checksum is available [here](https://github.com/sould666/tilldeals-clientapp/releases/download/latest/TillDeals-Hardware-Setup-latest-win-x64.exe.sha256).
+
 ## Build a Windows package
 
 Prerequisites: Git, Node.js 20 or later, and npm.
