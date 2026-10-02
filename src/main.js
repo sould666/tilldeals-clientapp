@@ -39,6 +39,14 @@ function errorDetails(error) {
 
 writeLog('info', 'Main process module started.', { platform: process.platform, node: process.version });
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  writeLog('warn', 'Another instance is already running; exiting.');
+  app.quit();
+}
+
+let mainWindow = null;
+
 let si;
 try {
   si = require('systeminformation');
@@ -48,6 +56,8 @@ try {
   throw error;
 }
 
+const account = require('./account');
+
 function isWsl() {
   return Boolean(process.env.WSL_DISTRO_NAME) || os.release().toLowerCase().includes('microsoft');
 }
@@ -55,7 +65,6 @@ function isWsl() {
 const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 const TILLDEALS_API_URL = 'https://deals.tillgreen.eu/api/hardware-upgrade-recommendations';
-const TILLDEALS_TRACKING_API_URL = 'https://deals.tillgreen.eu/api/tracked-items';
 const UPGRADE_SPENDING_TIERS = ['cheap', 'moderate', 'expensive', 'takeMyMoney'];
 const MAX_RECOMMENDATION_ATTEMPTS = 3;
 
@@ -87,46 +96,6 @@ function clearTillDealsLastRecommendation() {
   if (fs.existsSync(filePath)) {
     fs.rmSync(filePath);
   }
-}
-
-function getTillDealsTrackedItemsPath() {
-  return path.join(app.getPath('userData'), 'tilldeals-tracked-items.json');
-}
-
-function loadTillDealsTrackedItems() {
-  const filePath = getTillDealsTrackedItemsPath();
-  if (!fs.existsSync(filePath)) return [];
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    writeLog('error', 'Could not read TillDeals tracked items.', errorDetails(error));
-    return [];
-  }
-}
-
-function appendTillDealsTrackedItems(entries) {
-  const stored = loadTillDealsTrackedItems();
-  const timestamp = new Date().toISOString();
-  const withMeta = entries.map((entry) => ({ ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, addedAt: timestamp }));
-  const merged = [...withMeta, ...stored].slice(0, 200);
-  fs.writeFileSync(getTillDealsTrackedItemsPath(), JSON.stringify(merged));
-  return merged;
-}
-
-function buildTrackingTransferObject(entries) {
-  const items = Array.from(new Set(entries.flatMap((entry) => Array.isArray(entry.items) ? entry.items : [])
-    .map((item) => String(item || '').trim())
-    .filter(Boolean)));
-  return {
-    destination: {
-      method: 'POST',
-      url: TILLDEALS_TRACKING_API_URL,
-    },
-    generatedAt: new Date().toISOString(),
-    sourceApp: 'TillDeals Hardware',
-    items,
-  };
 }
 
 function hasOpenAiKey() {
@@ -1022,9 +991,21 @@ function createWindow() {
   window.loadFile(path.join(__dirname, 'renderer', 'index.html')).catch((error) => {
     writeLog('error', 'Could not load renderer file.', errorDetails(error));
   });
+  mainWindow = window;
+  window.on('closed', () => {
+    mainWindow = null;
+  });
 }
 
+app.on('second-instance', () => {
+  writeLog('info', 'Second launch blocked; focusing existing window.');
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
+
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
   writeLog('info', 'Application ready.', { platform: process.platform, isWsl: isWsl() });
   ipcMain.handle('hardware:read', async () => {
     writeLog('info', 'Hardware read requested by renderer.');
@@ -1056,6 +1037,7 @@ app.whenReady().then(() => {
     return result;
   });
   ipcMain.handle('llm:findReplacementDevice', async (_event, payload) => {
+    if (!account.canUseAi()) return account.paymentRequired('ai_service', 'AI features require the TillDeals AI service.');
     try {
       const message = await findReplacementDevice(payload || {});
       writeLog('info', 'LLM replacement device lookup completed.', { component: payload?.component });
@@ -1066,6 +1048,7 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('llm:chooseBestHardwareUpgrade', async (_event, payload) => {
+    if (!account.canUseAi()) return account.paymentRequired('ai_service', 'AI features require the TillDeals AI service.');
     try {
       const transferObject = await chooseBestHardwareUpgrade(payload || {});
       writeLog('info', 'LLM TillDeals hardware upgrade recommendation completed.');
@@ -1076,19 +1059,10 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('tilldeals:getLastRecommendation', () => loadTillDealsLastRecommendation());
-  ipcMain.handle('tilldeals:getTrackedItems', () => loadTillDealsTrackedItems());
-  ipcMain.handle('tilldeals:addTrackedItems', (_event, entries) => {
-    try {
-      const list = Array.isArray(entries) ? entries : [];
-      if (!list.length) return { ok: false, message: 'No items were marked for tracking.' };
-      appendTillDealsTrackedItems(list);
-      const trackingPayload = buildTrackingTransferObject(list);
-      writeLog('info', 'TillDeals tracked items added.', { count: list.length });
-      return { ok: true, trackingPayload };
-    } catch (error) {
-      writeLog('error', 'Could not add TillDeals tracked items.', errorDetails(error));
-      return { ok: false, message: error.message };
-    }
+  account.registerAccountIpc(ipcMain, {
+    writeLog,
+    summarizeHardware: buildHardwareDataLayer,
+    broadcast: (channel) => mainWindow?.webContents.send(channel),
   });
   createWindow();
 

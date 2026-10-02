@@ -7,6 +7,7 @@
   "scripts": {
     "start": "electron .",
     "package:win": "electron-builder --win dir --x64",
+    "package:installer": "electron-builder --win nsis --x64 --publish never",
     "deploy:win": "node scripts/deploy-win.js",
     "test:sensors": "node scripts/test-sensors.js"
   },
@@ -34,8 +35,21 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}-Setup-${version}-win-${arch}.${ext}"
     },
     "artifactName": "${productName}-${version}-win-${arch}.${ext}"
   }

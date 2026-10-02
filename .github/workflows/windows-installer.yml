@@ -1,0 +1,61 @@
+name: Windows installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-installer
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build NSIS installer
+        run: npm run package:installer
+
+      - name: Checksum
+        id: checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist -Filter '*-Setup-*.exe' | Select-Object -First 1
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($installer.Name)" | Out-File -Encoding ascii "dist/$($installer.Name).sha256"
+          "installer=dist/$($installer.Name)" >> $env:GITHUB_OUTPUT
+          "name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tilldeals-windows-installer
+          path: |
+            ${{ steps.checksum.outputs.installer }}
+            ${{ steps.checksum.outputs.installer }}.sha256
+
+      - name: Publish 'latest' release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest \
+            "${{ steps.checksum.outputs.installer }}" \
+            "${{ steps.checksum.outputs.installer }}.sha256" \
+            --target "${{ github.sha }}" \
+            --prerelease \
+            --title "Latest build (${{ steps.checksum.outputs.name }})" \
+            --notes "Built from ${{ github.sha }}. SHA-256: ${{ steps.checksum.outputs.sha256 }}"

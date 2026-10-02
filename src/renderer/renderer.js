@@ -6,6 +6,7 @@ let refreshTimer;
 const diagnosisState = { mode: 'amateur', area: null, symptom: null, query: '', checkIndex: 0, outcome: null };
 let tillDealsTransferObject = null;
 let tillDealsRows = new Map();
+let trackedItemNames = new Set();
 
 function formatBytes(value) {
   if (!Number.isFinite(value) || value <= 0) return t('status.notReported');
@@ -34,7 +35,7 @@ function slotSummary(memorySlots) {
 }
 
 function currentViewName() {
-  return document.querySelector('.nav-button.active')?.dataset.nav || 'profile';
+  return document.querySelector('[data-view]:not([hidden])')?.dataset.view || 'profile';
 }
 
 function updateMainHeading(viewName = currentViewName()) {
@@ -130,6 +131,27 @@ function makeActionButton(label, className, onClick) {
   button.textContent = label;
   button.addEventListener('click', onClick);
   return button;
+}
+
+function renderPaywall(target, response) {
+  const container = typeof target === 'string' ? document.querySelector(target) : target;
+  container.replaceChildren();
+  if (response?.code !== 'PAYMENT_REQUIRED') return;
+  const box = document.createElement('div');
+  box.className = 'paywall';
+  const note = document.createElement('p');
+  note.textContent = t(`paywall.${response.product}`, { limit: response.limit ?? '', needed: response.needed ?? 1 });
+  const status = document.createElement('p');
+  status.className = 'utility-note';
+  const button = makeActionButton(t('paywall.buy'), 'secondary-action', async () => {
+    button.disabled = true;
+    status.textContent = t('paywall.opening');
+    const result = await window.billing.checkout(response.product, response.needed || 1);
+    status.textContent = result.ok ? t('paywall.opened') : t('paywall.failed', { message: result.message });
+    button.disabled = false;
+  });
+  box.append(note, button, status);
+  container.append(box);
 }
 
 function renderDiagnosisFlow() {
@@ -293,14 +315,16 @@ function renderOutcomeCard(target, outcome) {
   `;
   const result = document.createElement('p');
   result.className = 'utility-note';
-  const searchButton = makeActionButton(t('diagnosis.findReplacement'), 'secondary-action', () => findReplacementDevice(outcome, searchButton, result));
-  card.append(searchButton, result);
+  const paywall = document.createElement('div');
+  const searchButton = makeActionButton(t('diagnosis.findReplacement'), 'secondary-action', () => findReplacementDevice(outcome, searchButton, result, paywall));
+  card.append(searchButton, result, paywall);
   target.append(card);
 }
 
-async function findReplacementDevice(outcome, button, resultElement) {
+async function findReplacementDevice(outcome, button, resultElement, paywall) {
   button.disabled = true;
   resultElement.textContent = t('diagnosis.searching');
+  renderPaywall(paywall, null);
   try {
     const response = await window.llm.findReplacementDevice({
       type: outcome.type,
@@ -310,6 +334,7 @@ async function findReplacementDevice(outcome, button, resultElement) {
       hardwareSnapshot: window.latestSnapshot,
     });
     resultElement.textContent = response.ok ? response.message : t('diagnosis.replacementFailed', { message: response.message });
+    renderPaywall(paywall, response);
   } catch (error) {
     resultElement.textContent = t('diagnosis.replacementFailed', { message: error.message });
   } finally {
@@ -332,6 +357,7 @@ async function chooseTillDealsUpgrade() {
 
   button.disabled = true;
   status.textContent = t('tilldeals.searching');
+  renderPaywall('#tilldeals-paywall', null);
   output.hidden = true;
   output.textContent = '';
   result.hidden = true;
@@ -344,6 +370,7 @@ async function chooseTillDealsUpgrade() {
     });
     if (!response.ok) {
       status.textContent = t('tilldeals.failed', { message: response.message });
+      renderPaywall('#tilldeals-paywall', response);
       return;
     }
     tillDealsTransferObject = response.transferObject;
@@ -459,14 +486,21 @@ function buildTrackCell(value, key) {
   wrapper.append(valueWrap, button);
   cell.append(wrapper);
 
+  const tracked = trackedItemNames.has(normalizedValue.toLowerCase());
+  if (tracked) {
+    button.disabled = true;
+    button.textContent = '✓';
+    cell.classList.add('cell-tracked');
+  }
+
   tillDealsRows.set(key, {
     button,
     cell,
     selected: false,
-    tracked: false,
+    tracked,
     entryData: {
-      key,
-      items: [normalizedValue],
+      name: normalizedValue,
+      category: key.replace(/^proposal-\d+-/, ''),
     },
   });
 
@@ -528,12 +562,15 @@ async function addMarkedItemsToTracking() {
   }
 
   status.textContent = t('tilldeals.trackSaving');
+  renderPaywall('#tilldeals-track-paywall', null);
   try {
-    const response = await window.tilldeals.addTrackedItems(selected.map((rowInfo) => rowInfo.entryData));
+    const response = await window.tilldeals.addTrackedItems(selected.map((rowInfo) => rowInfo.entryData), 'ai');
     if (!response.ok) {
       status.textContent = t('tilldeals.trackFailed', { message: response.message });
+      renderPaywall('#tilldeals-track-paywall', response);
       return;
     }
+    trackedItemNames = new Set(response.items.map((item) => item.name.toLowerCase()));
     selected.forEach((rowInfo) => {
       rowInfo.tracked = true;
       rowInfo.selected = false;
@@ -542,15 +579,22 @@ async function addMarkedItemsToTracking() {
       rowInfo.cell.classList.remove('cell-marked');
       rowInfo.cell.classList.add('cell-tracked');
     });
-    output.textContent = JSON.stringify(response.trackingPayload, null, 2);
+    output.textContent = JSON.stringify(response.items, null, 2);
     output.hidden = false;
-    status.textContent = t('tilldeals.trackSaved');
+    status.textContent = response.synced ? t('tilldeals.trackSaved') : t('tilldeals.trackSavedLocal');
+    window.dispatchEvent(new CustomEvent('trackedchange', { detail: { source: 'tilldeals' } }));
   } catch (error) {
     status.textContent = t('tilldeals.trackFailed', { message: error.message });
   }
 }
 
+async function refreshTrackedItemNames() {
+  const items = await window.tilldeals.getTrackedItems();
+  trackedItemNames = new Set(items.map((item) => item.name.toLowerCase()));
+}
+
 async function loadLastTillDealsRecommendation() {
+  await refreshTrackedItemNames();
   const transferObject = await window.tilldeals.getLastRecommendation();
   if (!transferObject) return;
   tillDealsTransferObject = transferObject;
@@ -722,6 +766,11 @@ function setupTillDeals() {
   updateSpendingTierLabel();
   document.querySelector('#tilldeals-ai-button').addEventListener('click', chooseTillDealsUpgrade);
   document.querySelector('#tilldeals-track-button').addEventListener('click', addMarkedItemsToTracking);
+  window.addEventListener('trackedchange', async (event) => {
+    if (event.detail?.source === 'tilldeals') return;
+    await refreshTrackedItemNames();
+    if (tillDealsTransferObject) renderTillDealsTable(tillDealsTransferObject);
+  });
   loadLastTillDealsRecommendation();
 }
 

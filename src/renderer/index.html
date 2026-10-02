@@ -25,9 +25,26 @@
             <button class="nav-button" data-nav="settings" type="button" data-i18n="nav.settings">Ustawienia</button>
             <button class="nav-button" data-nav="diagnosis" type="button" data-i18n="nav.diagnosis">Ręczna diagnoza</button>
             <button class="nav-button" data-nav="tilldeals" type="button" data-i18n="nav.tilldeals">TillDeals</button>
+            <button class="nav-button" data-nav="mydeals" type="button" data-i18n="nav.mydeals">MyDeals</button>
+            <button class="nav-button" data-nav="contact" type="button" data-i18n="nav.contact">Kontakt</button>
           </nav>
         </div>
       </header>
+      <section class="utility-view onboarding-view" data-view="onboarding" hidden>
+        <p class="eyebrow" data-i18n="onboarding.eyebrow">PIERWSZE URUCHOMIENIE</p>
+        <h2 data-i18n="onboarding.title">Utwórz profil</h2>
+        <p class="utility-note" data-i18n="onboarding.help">Profil jest wymagany do korzystania z aplikacji.</p>
+        <form id="onboarding-form" class="account-form" novalidate>
+          <label for="onboarding-email" data-i18n="account.email">E-mail</label>
+          <input id="onboarding-email" type="email" autocomplete="email" maxlength="254" required />
+          <label for="onboarding-name" data-i18n="account.displayName">Nazwa wyświetlana</label>
+          <input id="onboarding-name" type="text" autocomplete="nickname" maxlength="80" required />
+          <label class="setting-row"><input id="onboarding-terms" type="checkbox" required /> <span data-i18n="account.acceptTerms">Akceptuję regulamin i politykę prywatności</span></label>
+          <p class="utility-note" data-i18n="account.machineKeyNote">Aplikacja tworzy anonimowy klucz urządzenia.</p>
+          <button type="submit" data-i18n="onboarding.submit">Utwórz profil</button>
+          <p id="onboarding-status" class="utility-note" role="status"></p>
+        </form>
+      </section>
       <section data-view="profile">
         <section id="summary" class="summary" aria-label="System summary"></section>
         <section id="details" class="details" aria-live="polite"></section>
@@ -50,6 +67,21 @@
           </div>
           <p id="openai-key-status" class="utility-note"></p>
         </div>
+        <div class="setting-group">
+          <h3 data-i18n="account.title">Konto TillDeals</h3>
+          <form id="account-form" class="account-form" novalidate>
+            <label for="account-email" data-i18n="account.email">E-mail</label>
+            <input id="account-email" type="email" autocomplete="email" maxlength="254" required />
+            <label for="account-name" data-i18n="account.displayName">Nazwa wyświetlana</label>
+            <input id="account-name" type="text" autocomplete="nickname" maxlength="80" required />
+            <div class="setting-row">
+              <button type="submit" data-i18n="settings.save">Zapisz</button>
+              <button id="account-refresh-plan" class="secondary-action" type="button" data-i18n="account.refreshPlan">Odśwież plan</button>
+            </div>
+          </form>
+          <p id="account-status" class="utility-note" role="status"></p>
+          <p id="account-plan" class="utility-note"></p>
+        </div>
       </section>
       <section class="utility-view" data-view="diagnosis" hidden>
         <div class="utility-heading"><div><p class="eyebrow" data-i18n="diagnosis.eyebrow">ROZWIĄZYWANIE PROBLEMÓW</p><h2 data-i18n="diagnosis.title">Ręczna diagnoza</h2></div><button id="back-to-profile" type="button" data-i18n="action.backProfile">Wróć do profilu</button></div>
@@ -65,6 +97,7 @@
         </div>
         <button id="tilldeals-ai-button" type="button" data-i18n="tilldeals.chooseButton">Let AI choose better hardware</button>
         <p id="tilldeals-status" class="utility-note"></p>
+        <div id="tilldeals-paywall"></div>
         <div id="tilldeals-result" class="upgrade-result" hidden>
           <h3 data-i18n="tilldeals.tableTitle">4 propozycje ulepszeń</h3>
           <div class="upgrade-table-wrap">
@@ -82,9 +115,62 @@
           </div>
           <button id="tilldeals-track-button" type="button" class="secondary-action" data-i18n="tilldeals.trackButton">Dodaj oznaczone do śledzenia</button>
           <p id="tilldeals-track-status" class="utility-note"></p>
+          <div id="tilldeals-track-paywall"></div>
           <pre id="tilldeals-tracking-json" class="json-output" hidden></pre>
         </div>
         <pre id="tilldeals-json" class="json-output" hidden></pre>
+      </section>
+      <section class="utility-view" data-view="mydeals" hidden>
+        <div class="utility-heading"><div><p class="eyebrow" data-i18n="mydeals.eyebrow">ŚLEDZONE OFERTY</p><h2 data-i18n="mydeals.title">MyDeals</h2></div></div>
+        <p id="mydeals-plan" class="utility-note"></p>
+        <div id="mydeals-paywall"></div>
+        <div class="setting-group">
+          <label for="mydeals-refresh" data-i18n="mydeals.refreshLabel">Częstotliwość odświeżania</label>
+          <select id="mydeals-refresh"></select>
+          <p id="mydeals-refresh-status" class="utility-note"></p>
+        </div>
+        <div class="setting-group">
+          <h3 data-i18n="mydeals.manualTitle">Dodaj urządzenie ręcznie</h3>
+          <form id="mydeals-add-form" class="setting-row">
+            <select id="mydeals-add-category" aria-label="Category"></select>
+            <input id="mydeals-add-name" class="text-input" type="text" maxlength="200" required data-i18n-placeholder="mydeals.manualPlaceholder" />
+            <button type="submit" data-i18n="mydeals.add">Dodaj</button>
+          </form>
+          <p id="mydeals-add-status" class="utility-note"></p>
+        </div>
+        <div class="upgrade-table-wrap setting-group">
+          <table class="upgrade-table">
+            <thead>
+              <tr>
+                <th data-i18n="mydeals.colItem">Produkt</th>
+                <th data-i18n="tilldeals.colCategory">Kategoria</th>
+                <th data-i18n="mydeals.colSource">Źródło</th>
+                <th data-i18n="mydeals.colBestDeal">Najlepsza oferta</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="mydeals-table-body"></tbody>
+          </table>
+        </div>
+        <p id="mydeals-updated" class="utility-note"></p>
+      </section>
+      <section class="utility-view" data-view="contact" hidden>
+        <div class="utility-heading"><div><p class="eyebrow" data-i18n="contact.eyebrow">PŁATNA KONSULTACJA</p><h2 data-i18n="contact.title">Porozmawiaj z konsultantem</h2></div></div>
+        <p class="utility-note" data-i18n="contact.help">Płatna rozmowa na żywo z konsultantem sprzętowym.</p>
+        <form id="contact-form" class="account-form">
+          <label for="contact-topic" data-i18n="contact.topic">Temat</label>
+          <select id="contact-topic">
+            <option value="upgrade" data-i18n="contact.topic.upgrade">Doradztwo w ulepszeniu</option>
+            <option value="diagnosis" data-i18n="contact.topic.diagnosis">Pomoc w diagnozie</option>
+            <option value="compatibility" data-i18n="contact.topic.compatibility">Sprawdzenie zgodności</option>
+            <option value="other" data-i18n="contact.topic.other">Inne</option>
+          </select>
+          <label for="contact-message" data-i18n="contact.message">Opis</label>
+          <textarea id="contact-message" rows="6" maxlength="2000" required></textarea>
+          <label class="setting-row"><input id="contact-include-hardware" type="checkbox" checked /> <span data-i18n="contact.includeHardware">Dołącz podsumowanie sprzętu</span></label>
+          <button type="submit" data-i18n="contact.submit">Zarezerwuj płatną konsultację</button>
+          <p id="contact-status" class="utility-note" role="status"></p>
+        </form>
       </section>
     </main>
     <template id="section-template">
@@ -97,6 +183,7 @@
     <script src="diagnosis-tree.js"></script>
     <script src="diagnosis-outcomes.js"></script>
     <script src="renderer.js"></script>
+    <script src="account.js"></script>
     <script>setLocale(getLocale());</script>
   </body>
 </html>

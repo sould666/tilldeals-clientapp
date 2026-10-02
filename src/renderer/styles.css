@@ -106,6 +106,15 @@ button:disabled { cursor: wait; opacity: .6; }
 select { border: 1px solid #333f3b; background: #1b2422; color: #e7e5da; font: inherit; padding: 10px 12px; min-width: 160px; }
 .setting-group input[type="password"] { border: 1px solid #333f3b; background: #1b2422; color: #e7e5da; font: inherit; padding: 10px 12px; flex: 1; min-width: 220px; }
 .section { border-top: 1px solid #333f3b; padding-top: 14px; }
+body.onboarding .top-actions { display: none; }
+.onboarding-view { max-width: 560px; }
+.account-form { display: grid; gap: 8px; max-width: 520px; }
+.account-form > label:not(.setting-row) { color: #97a79f; font-size: 12px; margin-top: 6px; }
+.account-form input[type="email"], .account-form input[type="text"], .account-form textarea, .text-input { border: 1px solid #333f3b; background: #1b2422; color: #e7e5da; font: inherit; padding: 10px 12px; }
+.account-form button[type="submit"] { justify-self: start; margin-top: 8px; }
+.text-input { flex: 1; min-width: 220px; }
+.paywall { background: #1b2422; border: 1px solid #333f3b; border-left: 5px solid #e2b23f; margin-top: 14px; padding: 14px 18px; }
+.paywall p { font-size: 12px; margin: 0 0 10px; }
 h2 { font-size: 25px; margin: 0 0 18px; }
 dl { display: grid; grid-template-columns: minmax(130px, 36%) 1fr; gap: 10px 16px; margin: 0; }
 dt { color: #97a79f; font-size: 11px; }
