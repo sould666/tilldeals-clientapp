@@ -59,6 +59,7 @@ try {
 const account = require('./account');
 const { createAuth, registerAuthIpc } = require('./auth');
 const { rendererTrust } = require('./window-trust');
+const { createUpdates, registerUpdatesIpc } = require('./updates');
 const trust = rendererTrust(path.join(__dirname, 'renderer', 'index.html'), () => mainWindow);
 
 function isWsl() {
@@ -1073,7 +1074,20 @@ app.whenReady().then(() => {
     isTrustedSender: trust.isTrustedSender,
     log: writeLog,
   });
+  const installedWindows = process.platform === 'win32' && process.arch === 'x64' && app.isPackaged
+    && !process.env.PORTABLE_EXECUTABLE_FILE
+    && fs.existsSync(path.join(path.dirname(app.getPath('exe')), 'Uninstall TillDeals Hardware.exe'));
+  const updates = createUpdates({
+    updater: installedWindows ? require('electron-updater').autoUpdater : null,
+    currentVersion: app.getVersion(),
+    supported: installedWindows,
+    unsupportedReason: !app.isPackaged ? 'development' : process.platform !== 'win32' || process.arch !== 'x64' ? 'platform' : 'installer',
+    log: writeLog,
+    broadcast: (channel, state) => mainWindow?.webContents.send(channel, state),
+  });
+  registerUpdatesIpc(ipcMain, { updates, isTrustedSender: trust.isTrustedSender, log: writeLog });
   createWindow();
+  updates.check();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

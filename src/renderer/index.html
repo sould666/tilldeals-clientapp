@@ -30,6 +30,10 @@
           </nav>
         </div>
       </header>
+      <aside class="app-update-bar" aria-live="polite">
+        <p id="app-update-status" class="utility-note" role="status"></p>
+        <button id="app-update-button" type="button" class="secondary-action" disabled data-i18n="updates.check">Sprawdź aktualizacje</button>
+      </aside>
       <section class="utility-view onboarding-view" data-view="onboarding" hidden>
         <p class="eyebrow" data-i18n="onboarding.eyebrow">PIERWSZE URUCHOMIENIE</p>
         <h2 data-i18n="onboarding.title">Utwórz profil</h2>
@@ -212,6 +216,7 @@
     <script src="renderer.js"></script>
     <script src="auth.js"></script>
     <script src="account.js"></script>
+    <script src="updates.js"></script>
     <script>setLocale(getLocale());</script>
   </body>
 </html>

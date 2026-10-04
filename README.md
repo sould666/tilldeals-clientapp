@@ -6,7 +6,19 @@ The app detects its operating environment. A native Windows build reads Windows 
 
 ## Download for Windows
 
-[Download the latest Windows installer](https://github.com/sould666/tilldeals-clientapp/releases/download/latest/TillDeals-Hardware-Setup-latest-win-x64.exe) or [view all releases](https://github.com/sould666/tilldeals-clientapp/releases). The installer checksum is available [here](https://github.com/sould666/tilldeals-clientapp/releases/download/latest/TillDeals-Hardware-Setup-latest-win-x64.exe.sha256).
+[Download the latest Windows installer](https://github.com/sould666/tilldeals-clientapp/releases/latest/download/TillDeals-Hardware-Setup-latest-win-x64.exe) or [view all releases](https://github.com/sould666/tilldeals-clientapp/releases). The installer checksum is available [here](https://github.com/sould666/tilldeals-clientapp/releases/latest/download/TillDeals-Hardware-Setup-latest-win-x64.exe.sha256).
+
+### Automatic desktop updates
+
+Windows x64 builds installed with the NSIS installer check GitHub for a newer stable release once at launch. The always-visible update bar also supports manual checks. **Update desktop app** downloads the update using `electron-updater`, verifies the installer against the SHA-512 in release metadata, and shows progress. **Install and restart** then starts the installer and restarts the app. Downloads and installation require these explicit actions; closing the app does not silently install an update. Network/download/checksum errors are shown, with manual retry. Updates do not change local profile/items/BYOK or enable business APIs.
+
+Development, Linux/WSL, unsupported architectures, ZIP, and portable builds show an explicit unsupported status; use the Windows installer to enable automatic updates. Older builds without the updater need one manual installation of the first updater-enabled release.
+
+The Windows workflow now publishes immutable stable `v<package.json version>` releases with the versioned NSIS `.exe`, `.blockmap`, `latest.yml`, SHA-256 checksum, and compatibility download aliases. It preserves older releases for differential downloads, skips already-published stable versions, rejects unfinished/draft versions, and verifies the published installer filename/checksum and metadata after upload. Bump the package version before publishing a new release; pushing the same version does not replace an existing release. The old mutable `latest` prerelease is not an updater feed and is no longer overwritten.
+
+The installer remains unsigned. Checksums verify consistency with GitHub-hosted metadata, not publisher identity; Windows may display a security prompt. Release signing should be configured before relying on publisher-signature verification.
+
+Run updater state/IPC and release-format tests with `npm run test:updates`. Actual Windows installer update/restart requires two published updater-enabled versions and is not verified by mock tests.
 
 ## Build a Windows package
 

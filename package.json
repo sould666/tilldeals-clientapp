@@ -10,10 +10,12 @@
     "package:installer": "electron-builder --win nsis --x64 --publish never",
     "deploy:win": "node scripts/deploy-win.js",
     "test:sensors": "node scripts/test-sensors.js",
-    "test:backend": "node --test scripts/backend.test.js scripts/account.test.js scripts/auth.test.js"
+    "test:backend": "node --test scripts/backend.test.js scripts/account.test.js scripts/auth.test.js",
+    "test:updates": "node --test scripts/updates.test.js"
   },
   "dependencies": {
-    "systeminformation": "^5.33.8"
+    "systeminformation": "^5.33.8",
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "electron": "^37.4.0",
@@ -24,6 +26,12 @@
     "productName": "TillDeals Hardware",
     "icon": "build/icon.ico",
     "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "sould666",
+      "repo": "tilldeals-clientapp",
+      "releaseType": "release"
+    },
     "files": [
       "src/**/*",
       "package.json"
@@ -50,7 +58,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "artifactName": "${productName}-Setup-${version}-win-${arch}.${ext}"
+      "artifactName": "TillDeals-Hardware-Setup-${version}-win-${arch}.${ext}"
     },
     "artifactName": "${productName}-${version}-win-${arch}.${ext}"
   }

@@ -1,5 +1,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+contextBridge.exposeInMainWorld('updates', {
+  getState: () => ipcRenderer.invoke('updates:getState'),
+  check: () => ipcRenderer.invoke('updates:check'),
+  download: () => ipcRenderer.invoke('updates:download'),
+  install: () => ipcRenderer.invoke('updates:install'),
+  onChanged: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('updates:changed', listener);
+    return () => ipcRenderer.removeListener('updates:changed', listener);
+  },
+});
+
 contextBridge.exposeInMainWorld('auth', {
   getState: () => ipcRenderer.invoke('auth:getState'),
   requestCode: (email) => ipcRenderer.invoke('auth:requestCode', { email }),
