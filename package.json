@@ -10,7 +10,7 @@
     "package:installer": "electron-builder --win nsis --x64 --publish never",
     "deploy:win": "node scripts/deploy-win.js",
     "test:sensors": "node scripts/test-sensors.js",
-    "test:backend": "node --test scripts/backend.test.js scripts/account.test.js scripts/auth.test.js",
+    "test:backend": "node --test scripts/backend.test.js scripts/account.test.js scripts/auth.test.js scripts/tracked-sync.test.js",
     "test:updates": "node --test scripts/updates.test.js"
   },
   "dependencies": {

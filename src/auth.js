@@ -37,6 +37,7 @@ function createAuth({
   app, safeStorage, log, fetchImpl = globalThis.fetch, fileSystem = fs,
   randomUUID = crypto.randomUUID, now = Date.now, timeoutMs = 15000,
   platform = process.platform,
+  onValidated = () => {}, onStateChanged = () => {},
 }) {
   const installationPath = path.join(app.getPath('userData'), 'auth-installation.json');
   const tokenPath = path.join(app.getPath('userData'), 'auth-session.bin');
@@ -52,6 +53,12 @@ function createAuth({
   let requestAllowedAt = 0;
   let verifyAllowedAt = 0;
   let queue = Promise.resolve();
+  let revision = 0;
+
+  function context() {
+    return token && confirmed && Date.parse(session.expiresAt) > now()
+      ? `${revision}:${account.id}:${session.id}` : null;
+  }
 
   function secureAvailable() {
     return safeStorage.isEncryptionAvailable()
@@ -92,6 +99,7 @@ function createAuth({
   }
 
   function clearAuth() {
+    revision++;
     token = null;
     account = null;
     session = null;
@@ -156,10 +164,11 @@ function createAuth({
       storageNotice,
       challenge: challenge ? { expiresAt: challenge.expiresAt } : null,
       resendAfterSeconds: Math.max(0, Math.ceil((requestAllowedAt - now()) / 1000)),
+      spaceUrl: confirmed ? `https://deals.tillgreen.eu/space/${account.id}` : null,
     };
   }
 
-  async function request(method, route, body, expectedStatus, bearer = false) {
+  async function request(method, route, body, expectedStatus, bearer = false, maxResponse = 16384) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -177,7 +186,7 @@ function createAuth({
       let payload;
       try {
         const text = await response.text();
-        if (text.length > 16384) throw authError('INVALID_RESPONSE');
+        if (Buffer.byteLength(text, 'utf8') > maxResponse) throw authError('INVALID_RESPONSE');
         payload = JSON.parse(text);
       } catch {
         throw authError('INVALID_RESPONSE');
@@ -212,16 +221,33 @@ function createAuth({
           'INVALID_RESPONSE', 'NETWORK_ERROR', 'REQUEST_TIMEOUT', 'SECURE_STORAGE_UNAVAILABLE',
           'STORAGE_ERROR', 'ALREADY_SIGNED_IN', 'NO_CHALLENGE',
           'ROUTE_UNAVAILABLE',
+          'AUTH_REQUIRED', 'SESSION_CHANGED',
         ].includes(error.code) ? error.code : 'STORAGE_ERROR';
         log('warn', 'Authentication operation failed.', { code });
         return { ok: false, code, retryAfterSeconds: error.retryAfterSeconds, auth: state() };
       }
     });
-    queue = result.then(() => undefined);
+    queue = result.then(() => { onStateChanged(state()); });
     return result;
   }
 
   return {
+    getContext: context,
+    putTrackedItems: (items, expectedContext) => run(async () => {
+      if (!context()) throw authError('AUTH_REQUIRED');
+      if (context() !== expectedContext) throw authError('SESSION_CHANGED');
+      const payload = await request('PUT', '/api/v1/tracked-items', { items }, 200, true, 262144);
+      if (context() !== expectedContext) throw authError('SESSION_CHANGED');
+      return { payload, installationId: getInstallationId() };
+    }),
+    openSpace: (openExternal) => run(async () => {
+      if (!context()) throw authError('AUTH_REQUIRED');
+      const url = new URL(`https://deals.tillgreen.eu/space/${account.id}`);
+      if (url.origin !== 'https://deals.tillgreen.eu' || url.pathname !== `/space/${account.id}`
+        || url.search || url.hash || url.username || url.password) throw authError('INVALID_RESPONSE');
+      await openExternal(url.href);
+      return {};
+    }),
     getState: () => run(async () => ({})),
     requestCode: (input) => run(async () => {
       if (!exactInput(input, ['email']) || typeof input.email !== 'string') throw authError('INVALID_REQUEST');
@@ -266,11 +292,13 @@ function createAuth({
         || !isAccount(payload.account) || payload.account.email !== challenge.email
         || !validSession(payload.session, false)) throw authError('INVALID_RESPONSE');
       token = payload.token;
+      revision++;
       account = payload.account;
       session = { id: payload.session.id, installationId: payload.session.installationId, expiresAt: payload.expiresAt };
       confirmed = true;
       challenge = null;
       persist();
+      onValidated();
       return {};
     }),
     refresh: () => run(async () => {
@@ -284,6 +312,7 @@ function createAuth({
       }
       account = payload.account;
       confirmed = true;
+      onValidated();
       return {};
     }),
     logout: () => run(async () => {

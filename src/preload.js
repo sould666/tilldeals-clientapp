@@ -19,6 +19,14 @@ contextBridge.exposeInMainWorld('auth', {
   refresh: () => ipcRenderer.invoke('auth:refresh'),
   logout: () => ipcRenderer.invoke('auth:logout'),
   signOutLocal: () => ipcRenderer.invoke('auth:signOutLocal'),
+  openSpace: () => ipcRenderer.invoke('auth:openSpace'),
+  onChanged: (callback) => ipcRenderer.on('auth:changed', (_event, state) => callback(state)),
+});
+
+contextBridge.exposeInMainWorld('trackedSync', {
+  getState: () => ipcRenderer.invoke('tracked-sync:getState'),
+  retry: () => ipcRenderer.invoke('tracked-sync:retry'),
+  onChanged: (callback) => ipcRenderer.on('tracked-sync:changed', (_event, state) => callback(state)),
 });
 
 contextBridge.exposeInMainWorld('hardware', {

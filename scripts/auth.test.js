@@ -286,6 +286,27 @@ test('stored tokens are not restored with insecure Linux storage', async () => {
   assert.equal(unsafe.requests.length, 0);
 });
 
+test('authenticated tracked snapshot uses only new bearer route and space opens without token handoff', async () => {
+  const f = fixture();
+  const verified = await signIn(f);
+  assert.equal(verified.auth.spaceUrl, `https://deals.tillgreen.eu/space/${ACCOUNT}`);
+  f.replies.push(Response.json({ installationId: INSTALLATION, items: [], syncedAt: new Date(START).toISOString() }));
+  const result = await f.auth.putTrackedItems([], f.auth.getContext());
+  assert.equal(result.ok, true);
+  const request = f.requests.at(-1);
+  assert.equal(request.url, 'https://deals.tillgreen.eu/api/v1/tracked-items');
+  assert.equal(request.method, 'PUT');
+  assert.deepEqual(request.body, { items: [] });
+  assert.equal(request.headers.Authorization, `Bearer ${TOKEN}`);
+  const opened = [];
+  assert.equal((await f.auth.openSpace(async (url) => opened.push(url))).ok, true);
+  assert.deepEqual(opened, [`https://deals.tillgreen.eu/space/${ACCOUNT}`]);
+  const context = f.auth.getContext();
+  await f.auth.signOutLocal();
+  assert.equal((await f.auth.putTrackedItems([], context)).code, 'AUTH_REQUIRED');
+  assert.equal((await f.auth.openSpace(async () => assert.fail())).code, 'AUTH_REQUIRED');
+});
+
 test('404, invalid JSON and timeouts fail explicitly, without automatic retries', async () => {
   const f = fixture({ timeoutMs: 5 });
   f.replies.push(new Response('<html>not deployed</html>', { status: 404 }));

@@ -22,6 +22,7 @@ let machineIdentity = null;
 let lastDealsAttemptAt = 0;
 let dealsTimer = null;
 let health = { status: 'unchecked', checkedAt: null };
+let trackedSync = null;
 
 function backendState() {
   return { businessApisAvailable: backend.BUSINESS_APIS_AVAILABLE, health };
@@ -242,7 +243,8 @@ function loadTrackedItems() {
   const stored = readJson('tilldeals-tracked-items.json', []);
   if (!Array.isArray(stored)) return [];
   // Earlier versions stored grouped entries ({ items: [...] }); flatten them into single items.
-  return stored.flatMap((entry) => {
+  let migrated = false;
+  const items = stored.flatMap((entry) => {
     if (Array.isArray(entry?.items)) {
       return entry.items.map((name, index) => ({
         id: `${entry.id || Date.now()}-${index}`,
@@ -253,7 +255,13 @@ function loadTrackedItems() {
       }));
     }
     return entry?.name ? [entry] : [];
+  }).map((item) => {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.id)) return item;
+    migrated = true;
+    return { ...item, id: crypto.randomUUID() };
   });
+  if (migrated) saveTrackedItems(items);
+  return items;
 }
 
 function saveTrackedItems(items) {
@@ -261,17 +269,11 @@ function saveTrackedItems(items) {
 }
 
 async function pushTrackedItems(items) {
-  if (!backend.BUSINESS_APIS_AVAILABLE) return false;
-  if (!items.length || !loadProfile()?.syncedAt) return false;
-  try {
-    await apiRequest('PUT', '/tracked-items', {
-      items: items.map(({ id, name, category, source, addedAt }) => ({ clientId: id, name, category, source, addedAt })),
-    });
-    return true;
-  } catch (error) {
-    log('warn', 'Could not sync tracked items.', { message: error.message, status: error.status });
-    return false;
+  if (trackedSync) {
+    await trackedSync.sync();
+    return trackedSync.getState().status === 'synced';
   }
+  return false;
 }
 
 async function addTrackedItems(entries, source) {
@@ -294,6 +296,9 @@ async function addTrackedItems(entries, source) {
   if (!additions.length) return { ok: false, code: 'NOTHING_TO_ADD', message: 'These items are already tracked.' };
 
   const { trackedItemLimit } = loadEntitlements();
+  if (stored.length + additions.length > 100) {
+    return { ok: false, code: 'ITEM_LIMIT', message: 'This installation supports at most 100 tracked products.' };
+  }
   if (stored.length + additions.length > trackedItemLimit) {
     return {
       ...paymentRequired('tracking_slot', `Your plan allows ${trackedItemLimit} tracked items. Buy an extra slot for each additional item.`),
@@ -314,12 +319,8 @@ async function removeTrackedItem(id) {
   const items = stored.filter((item) => item.id !== id);
   if (items.length === stored.length) return { ok: false, message: 'Item not found.' };
   saveTrackedItems(items);
-  if (backend.BUSINESS_APIS_AVAILABLE && loadProfile()?.syncedAt) {
-    apiRequest('DELETE', `/tracked-items/${encodeURIComponent(id)}`).catch((error) => {
-      log('warn', 'Could not remove tracked item on server.', { message: error.message });
-    });
-  }
-  return { ok: true, items };
+  const synced = await pushTrackedItems(items);
+  return { ok: true, items, synced };
 }
 
 function loadDealsSettings() {
@@ -474,4 +475,4 @@ function registerAccountIpc(ipcMain, { writeLog, summarizeHardware, broadcast })
   startDealsScheduler(() => broadcast('mydeals:updated'));
 }
 
-module.exports = { registerAccountIpc, canUseAi, paymentRequired };
+module.exports = { registerAccountIpc, canUseAi, paymentRequired, loadTrackedItems, setTrackedSync: (value) => { trackedSync = value; } };

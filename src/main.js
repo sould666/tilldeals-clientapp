@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, shell } = require('electron');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -60,6 +60,7 @@ const account = require('./account');
 const { createAuth, registerAuthIpc } = require('./auth');
 const { rendererTrust } = require('./window-trust');
 const { createUpdates, registerUpdatesIpc } = require('./updates');
+const { createTrackedSync } = require('./tracked-sync');
 const trust = rendererTrust(path.join(__dirname, 'renderer', 'index.html'), () => mainWindow);
 
 function isWsl() {
@@ -1069,11 +1070,38 @@ app.whenReady().then(() => {
     summarizeHardware: buildHardwareDataLayer,
     broadcast: (channel) => mainWindow?.webContents.send(channel),
   });
+  let trackedSync;
+  const auth = createAuth({
+    app, safeStorage, log: writeLog,
+    onValidated: () => trackedSync.sync(),
+    onStateChanged: (state) => {
+      trackedSync.authChanged();
+      mainWindow?.webContents.send('auth:changed', state);
+    },
+  });
+  trackedSync = createTrackedSync({
+    auth, readItems: account.loadTrackedItems, log: writeLog,
+    broadcast: (channel, state) => mainWindow?.webContents.send(channel, state),
+  });
+  account.setTrackedSync(trackedSync);
   registerAuthIpc(ipcMain, {
-    auth: createAuth({ app, safeStorage, log: writeLog }),
+    auth,
     isTrustedSender: trust.isTrustedSender,
     log: writeLog,
   });
+  for (const [channel, operation] of [
+    ['tracked-sync:getState', () => trackedSync.getState()],
+    ['tracked-sync:retry', async () => { await trackedSync.sync(); return trackedSync.getState(); }],
+    ['auth:openSpace', () => auth.openSpace((url) => shell.openExternal(url))],
+  ]) {
+    ipcMain.handle(channel, (event) => {
+      if (!trust.isTrustedSender(event)) {
+        writeLog('warn', 'Untrusted space/sync IPC blocked.', { channel });
+        throw new Error('Untrusted IPC sender.');
+      }
+      return operation();
+    });
+  }
   const installedWindows = process.platform === 'win32' && process.arch === 'x64' && app.isPackaged
     && !process.env.PORTABLE_EXECUTABLE_FILE
     && fs.existsSync(path.join(path.dirname(app.getPath('exe')), 'Uninstall TillDeals Hardware.exe'));

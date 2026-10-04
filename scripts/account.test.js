@@ -63,6 +63,7 @@ function loadAccount(seed = {}) {
   return {
     invoke: (name, ...args) => handlers.get(name)(null, ...args),
     files, requests, reads, logs,
+    setTrackedSync: context.module.exports.setTrackedSync,
   };
 }
 
@@ -141,4 +142,26 @@ test('local tracking limits, refresh options and encrypted entitlement cache rem
   assert.equal(state.entitlements.trackedItemLimit, 8);
   assert.equal(state.entitlements.aiService, true);
   assert.equal(state.backend.businessApisAvailable, false);
+});
+
+test('legacy IDs migrate persistently and local add/remove sync full snapshots including empty', async () => {
+  const account = loadAccount({
+    'tilldeals-tracked-items.json': [{ id: 'legacy-id', name: 'RAM', category: 'ram', source: 'manual', addedAt: '2026-01-01T00:00:00.000Z' }],
+  });
+  const migrated = await account.invoke('tilldeals:getTrackedItems');
+  assert.match(migrated[0].id, /^[0-9a-f-]{36}$/);
+  assert.equal((await account.invoke('tilldeals:getTrackedItems'))[0].id, migrated[0].id);
+  const snapshots = [];
+  account.setTrackedSync({
+    sync: async () => snapshots.push(JSON.parse(account.files.get('/test-user-data/tilldeals-tracked-items.json'))),
+    getState: () => ({ status: 'error', code: 'ROUTE_UNAVAILABLE' }),
+  });
+  const added = await account.invoke('tilldeals:addTrackedItems', [{ name: 'SSD', category: 'drives' }], 'manual');
+  assert.equal(added.ok, true);
+  assert.equal(added.synced, false);
+  assert.equal(snapshots[0].length, 2);
+  await account.invoke('tilldeals:removeTrackedItem', migrated[0].id);
+  await account.invoke('tilldeals:removeTrackedItem', added.items.find((item) => item.name === 'SSD').id);
+  assert.equal(snapshots.at(-1).length, 0);
+  assert.equal(account.requests.length, 0);
 });

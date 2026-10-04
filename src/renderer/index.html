@@ -92,6 +92,7 @@
         <div class="setting-group">
           <h3 data-i18n="auth.title">Logowanie kodem e-mail</h3>
           <p class="utility-note" data-i18n="auth.help"></p>
+          <p class="utility-note" data-i18n="sync.notice"></p>
           <p id="auth-state" class="utility-note" role="status"></p>
           <p id="auth-storage" class="utility-note"></p>
           <form id="auth-email-form" class="account-form">
@@ -109,6 +110,7 @@
             <button id="auth-refresh" type="button" class="secondary-action" data-i18n="auth.refresh">Sprawdź sesję</button>
             <button id="auth-logout" type="button" class="secondary-action" data-i18n="auth.logout">Wyloguj i unieważnij sesję</button>
             <button id="auth-local-logout" type="button" class="secondary-action" data-i18n="auth.localLogout">Wyloguj tylko na tym urządzeniu</button>
+            <button id="auth-open-space" type="button" class="secondary-action" data-i18n="sync.openSpace">Otwórz swoją przestrzeń</button>
           </div>
           <p class="utility-note" data-i18n="auth.localLogoutHelp"></p>
           <p id="auth-status" class="utility-note" role="status"></p>
@@ -154,6 +156,9 @@
       <section class="utility-view" data-view="mydeals" hidden>
         <div class="utility-heading"><div><p class="eyebrow" data-i18n="mydeals.eyebrow">ŚLEDZONE OFERTY</p><h2 data-i18n="mydeals.title">MyDeals</h2></div></div>
         <p id="mydeals-plan" class="utility-note"></p>
+        <p class="utility-note" data-i18n="sync.notice"></p>
+        <p id="tracked-sync-status" class="utility-note" role="status"></p>
+        <button id="tracked-sync-retry" type="button" class="secondary-action" data-i18n="sync.retry">Synchronizuj lokalną listę</button>
         <div id="mydeals-paywall"></div>
         <div class="setting-group">
           <label for="mydeals-refresh" data-i18n="mydeals.refreshLabel">Częstotliwość odświeżania</label>
@@ -217,6 +222,7 @@
     <script src="auth.js"></script>
     <script src="account.js"></script>
     <script src="updates.js"></script>
+    <script src="tracked-sync.js"></script>
     <script>setLocale(getLocale());</script>
   </body>
 </html>

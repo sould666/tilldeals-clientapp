@@ -21,6 +21,7 @@ function renderAuth() {
   const expired = authViewState.expiresAt && Date.parse(authViewState.expiresAt) <= Date.now();
   const hasSession = authViewState.status !== 'signedOut';
   const signedIn = hasSession && !expired;
+  document.querySelector('#auth-open-space').disabled = authBusy || !signedIn || authViewState.status !== 'authenticated';
   const remaining = Math.max(0, Math.ceil((resendAllowedAt - Date.now()) / 1000));
   document.querySelector('#auth-state').textContent = t(`auth.${expired ? 'expired' : authViewState.status}`, {
     email: authViewState.account?.email || '',
@@ -85,6 +86,11 @@ document.querySelector('#auth-logout').addEventListener('click', async () => {
   if (result?.ok) setAuthFeedback(result.revoked ? 'auth.revoked' : 'auth.noSession');
 });
 document.querySelector('#auth-local-logout').addEventListener('click', () => authAction(() => window.auth.signOutLocal(), 'auth.localSignedOut'));
+document.querySelector('#auth-open-space').addEventListener('click', () => authAction(() => window.auth.openSpace(), 'sync.browserOpened'));
+window.auth.onChanged((state) => {
+  authViewState = state;
+  renderAuth();
+});
 window.addEventListener('localechange', renderAuth);
 setInterval(renderAuth, 1000);
 authAction(() => window.auth.refresh());
