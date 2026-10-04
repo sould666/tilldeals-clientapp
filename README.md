@@ -14,22 +14,31 @@ Windows x64 builds installed with the NSIS installer check GitHub for a newer st
 
 Development, Linux/WSL, unsupported architectures, ZIP, and portable builds show an explicit unsupported status; use the Windows installer to enable automatic updates. Older builds without the updater need one manual installation of the first updater-enabled release.
 
-The Windows workflow now publishes immutable stable `v<package.json version>` releases with the versioned NSIS `.exe`, `.blockmap`, `latest.yml`, SHA-256 checksum, and compatibility download aliases. It preserves older releases for differential downloads, skips already-published stable versions, rejects unfinished/draft versions, and verifies the published installer filename/checksum and metadata after upload. Bump the package version before publishing a new release; pushing the same version does not replace an existing release. The old mutable `latest` prerelease is not an updater feed and is no longer overwritten.
+The single **Windows installer** workflow runs automatically on pushes to `main`, with the fixed run title **Windows release pipeline**. There are no manual workflow triggers or local release steps. It publishes immutable stable version tags with the NSIS `.exe`, `.blockmap`, `latest.yml`, SHA-256 checksum, and compatibility download aliases. Older releases remain available for differential downloads; the legacy mutable `latest` prerelease is no longer overwritten.
+
+### Automatic CI versioning
+
+The first release under this policy is **1.0.0**. Afterward, published stable release tags are the version authority. CI counts added plus deleted text lines in `src/**/*.js`, `src/**/*.css`, and `src/**/*.html` between the last published stable release commit and the triggering commit (renames count as deletion/addition):
+
+- Below **500** changed source lines: patch.
+- **500–1,999**: minor, resetting patch to zero.
+- **2,000 or more**: major, resetting minor/patch to zero.
+
+Tests, documentation, dependency lockfiles, assets and generated files do not count. Every new main push is release-eligible, even when the counted change is zero. These are code-volume thresholds, not a claim that a major version necessarily contains breaking API changes.
+
+CI stamps the selected version into both manifests before dependency installation and packaging. No bot commits or local version bump are needed; the repository's `1.0.0` version is a development baseline, while the installed app and published tags carry the actual CI release version. A rerun of the latest already-published commit verifies the existing assets instead of creating another release. Non-descendant history and unfinished/conflicting releases fail explicitly. Runs are serialized without canceling an active release; GitHub may replace older pending runs with a newer push.
+
+Artifacts are uploaded to a draft, downloaded back and verified (installer filename, SHA-256, SHA-512 metadata and blockmap presence) before becoming the latest stable release. Draft staging is transactional preparation, not a user-facing prerelease. A failed draft must be inspected/resolved before retrying; it is never silently deleted or replaced.
 
 The installer remains unsigned. Checksums verify consistency with GitHub-hosted metadata, not publisher identity; Windows may display a security prompt. Release signing should be configured before relying on publisher-signature verification.
 
 Run updater state/IPC and release-format tests with `npm run test:updates`. Actual Windows installer update/restart requires two published updater-enabled versions and is not verified by mock tests.
 
-## Build a Windows package
+## Release a Windows build
 
-Prerequisites: Git, Node.js 20 or later, and npm.
+Commit and push to `origin main`. GitHub Actions resolves the version, installs dependencies, tests, packages, verifies and publishes. Local builds are not part of the release pipeline. The previous local `deploy:win` version-bump/ZIP script has been removed.
 
-```bash
-git clone https://github.com/sould666/tilldeals-clientapp.git
-cd tilldeals-clientapp
-npm ci --no-audit --no-fund
-npm run deploy:win
-```
+For local development, use Node.js 24 and `npm ci`, then `npm start`. Packaging commands remain developer diagnostics only; they do not resolve release versions or publish releases.
 
 To test CPU and GPU sensor APIs in the current environment:
 
@@ -37,11 +46,7 @@ To test CPU and GPU sensor APIs in the current environment:
 npm run test:sensors
 ```
 
-The deploy script creates an unsigned, self-contained Windows x64 ZIP archive in `dist/`. It includes Electron and all application dependencies, so the target Windows PC does not need Node.js or npm.
-
-Extract the archive to a normal Windows folder such as `C:\Users\<user>\Downloads\TillDeals Hardware` and run `TillDeals Hardware.exe`.
-
-When building from WSL, do not run the packaged executable from `/home/...`. Copy the ZIP to a Windows path, extract it there, and launch it from Windows Explorer.
+The published Windows installer includes Electron and all application dependencies, so the target PC does not need Node.js or npm.
 
 ## Development
 

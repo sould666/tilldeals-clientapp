@@ -1,6 +1,6 @@
 {
   "name": "tilldeals-clientapp",
-  "version": "0.9.19",
+  "version": "1.0.0",
   "private": true,
   "description": "Local desktop hardware overview",
   "main": "src/main.js",
@@ -8,10 +8,9 @@
     "start": "electron .",
     "package:win": "electron-builder --win dir --x64",
     "package:installer": "electron-builder --win nsis --x64 --publish never",
-    "deploy:win": "node scripts/deploy-win.js",
     "test:sensors": "node scripts/test-sensors.js",
     "test:backend": "node --test scripts/backend.test.js scripts/account.test.js scripts/auth.test.js scripts/tracked-sync.test.js",
-    "test:updates": "node --test scripts/updates.test.js"
+    "test:updates": "node --test scripts/updates.test.js scripts/release-version.test.js"
   },
   "dependencies": {
     "systeminformation": "^5.33.8",

@@ -160,7 +160,11 @@ test('publishing configuration provides stable NSIS updater metadata and preserv
   assert.ok(workflow.includes('.blockmap'));
   assert.ok(workflow.includes('gh release create "${{ steps.release.outputs.tag }}"'));
   assert.equal(workflow.includes('gh release delete'), false);
-  assert.equal(workflow.includes('--prerelease'), false);
+  assert.equal(workflow.includes('--prerelease \\' ), false);
+  assert.ok(workflow.includes('--prerelease=false'));
+  assert.equal(workflow.includes('workflow_dispatch'), false);
+  assert.ok(workflow.includes('run-name: Windows release pipeline'));
+  assert.ok(workflow.includes('node scripts/release-version.js'));
   assert.ok(workflow.includes('Verify published artifact and checksum'));
 });
 

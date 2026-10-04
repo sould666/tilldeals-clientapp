@@ -1,27 +1,35 @@
 name: Windows installer
+run-name: Windows release pipeline
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
   group: windows-installer
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
+      - name: Resolve automatic release version
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-version.js
 
       - run: npm ci
 
@@ -29,32 +37,6 @@ jobs:
         run: |
           npm run test:backend
           npm run test:updates
-
-      - name: Select immutable versioned release
-        id: release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const version = require('./package.json').version;
-          if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Release requires a stable version.');
-          console.log(`Current package version: ${version}`);
-          const tag = `v${version}`;
-          fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/releases/tags/${tag}`, {
-            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
-          }).then(async (response) => {
-            if (response.status !== 200 && response.status !== 404) throw new Error(`Release lookup failed: ${response.status}`);
-            const publish = response.status === 404;
-            if (!publish) {
-              const release = await response.json();
-              if (release.draft || release.prerelease) throw new Error('Existing version is not a completed stable release; resolve it manually.');
-              console.log(`${tag} is already published; bump package.json to publish a new update.`);
-            }
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\ntag=${tag}\npublish=${publish}\n`);
-          }).catch((error) => { console.error(error.message); process.exitCode = 1; });
-          NODE
 
       - name: Build NSIS installer
         if: steps.release.outputs.publish == 'true'
@@ -99,7 +81,7 @@ jobs:
             ${{ steps.checksum.outputs.installer }}.blockmap
             dist/latest.yml
 
-      - name: Publish versioned stable release
+      - name: Stage versioned release
         if: steps.release.outputs.publish == 'true'
         shell: bash
         env:
@@ -113,22 +95,35 @@ jobs:
             "${{ steps.checksum.outputs.installer }}.blockmap" \
             "dist/latest.yml" \
             --target "${{ github.sha }}" \
-            --latest \
+            --draft \
             --title "TillDeals Hardware ${{ steps.release.outputs.version }}" \
             --notes "Built from ${{ github.sha }}. SHA-256: ${{ steps.checksum.outputs.sha256 }}"
 
       - name: Verify published artifact and checksum
-        if: steps.release.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release download '${{ steps.release.outputs.tag }}' --dir dist/published-verification --pattern '${{ steps.checksum.outputs.name }}' --pattern '${{ steps.checksum.outputs.name }}.sha256' --pattern 'latest.yml'
+          $name = 'TillDeals-Hardware-Setup-${{ steps.release.outputs.version }}-win-x64.exe'
+          gh release download '${{ steps.release.outputs.tag }}' --dir dist/published-verification --pattern "$name" --pattern "$name.sha256" --pattern "$name.blockmap" --pattern 'latest.yml'
           if ($LASTEXITCODE -ne 0) { throw 'Published artifact download failed.' }
-          $installer = Join-Path 'dist/published-verification' '${{ steps.checksum.outputs.name }}'
+          $installer = Join-Path 'dist/published-verification' $name
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
           $checksum = (Get-Content "$installer.sha256" -Raw).Trim()
-          if ($hash -ne '${{ steps.checksum.outputs.sha256 }}' -or $checksum -ne "$hash  ${{ steps.checksum.outputs.name }}") { throw 'Published artifact checksum mismatch.' }
-          $metadataHash = (Get-FileHash 'dist/latest.yml' -Algorithm SHA256).Hash
-          if ((Get-FileHash 'dist/published-verification/latest.yml' -Algorithm SHA256).Hash -ne $metadataHash) { throw 'Published metadata mismatch.' }
+          if ($checksum -ne "$hash  $name") { throw 'Published artifact checksum mismatch.' }
+          $metadata = Get-Content 'dist/published-verification/latest.yml' -Raw
+          $version = '${{ steps.release.outputs.version }}'
+          $sha512 = [Convert]::ToBase64String([Security.Cryptography.SHA512]::HashData([IO.File]::ReadAllBytes($installer)))
+          if (!$metadata.Contains($sha512) -or $metadata -notmatch "(?m)^version: $([regex]::Escape($version))\r?$" -or $metadata -notmatch "(?m)^path: $([regex]::Escape($name))\r?$") { throw 'Published updater metadata mismatch.' }
+          if ('${{ steps.release.outputs.publish }}' -eq 'true') {
+            if ($hash -ne '${{ steps.checksum.outputs.sha256 }}') { throw 'Published artifact differs from built installer.' }
+            if ((Get-FileHash 'dist/published-verification/latest.yml' -Algorithm SHA256).Hash -ne (Get-FileHash 'dist/latest.yml' -Algorithm SHA256).Hash) { throw 'Published metadata differs from build.' }
+          }
           Write-Host "Verified $installer SHA-256: $hash"
+
+      - name: Publish verified stable release
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release edit "${{ steps.release.outputs.tag }}" --draft=false --prerelease=false --latest
