@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('account', {
   getState: () => ipcRenderer.invoke('account:getState'),
   saveProfile: (input) => ipcRenderer.invoke('account:saveProfile', input),
   refreshEntitlements: () => ipcRenderer.invoke('account:refreshEntitlements'),
+  checkBackendHealth: () => ipcRenderer.invoke('account:checkBackendHealth'),
 });
 
 contextBridge.exposeInMainWorld('billing', {

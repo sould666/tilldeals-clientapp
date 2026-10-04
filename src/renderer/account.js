@@ -4,7 +4,8 @@ function setStatus(selector, text) {
   document.querySelector(selector).textContent = text;
 }
 
-function syncStatusText(profile) {
+function syncStatusText(profile, backend) {
+  if (!backend.businessApisAvailable) return profile ? t('backend.localProfile') : t('backend.profileHelp');
   if (profile?.syncedAt) return t('account.synced', { date: new Date(profile.syncedAt).toLocaleString() });
   return t('account.notSynced', { message: profile?.syncError || t('account.pending') });
 }
@@ -13,7 +14,8 @@ async function renderAccountSettings() {
   const state = await window.account.getState();
   document.querySelector('#account-email').value = state.profile?.email || '';
   document.querySelector('#account-name').value = state.profile?.displayName || '';
-  setStatus('#account-status', syncStatusText(state.profile));
+  setStatus('#account-status', syncStatusText(state.profile, state.backend));
+  renderBackendHealth(state.backend.health);
   const { entitlements } = state;
   setStatus('#account-plan', t('account.plan', {
     limit: entitlements.trackedItemLimit,
@@ -22,6 +24,28 @@ async function renderAccountSettings() {
     key: state.machineKeyShort,
   }) + (state.isVirtual ? ` ${t('account.virtual')}` : ''));
   return state;
+}
+
+function renderBackendHealth(health) {
+  const text = health.status === 'ok' ? t('backend.healthy', { release: health.release })
+    : health.status === 'error' ? t('backend.failed', { message: health.message })
+      : t('backend.unchecked');
+  setStatus('#backend-health-status', text);
+}
+
+async function checkBackendHealth() {
+  const button = document.querySelector('#backend-check-health');
+  button.disabled = true;
+  setStatus('#backend-health-status', t('backend.checking'));
+  try {
+    const state = await window.account.checkBackendHealth();
+    renderBackendHealth(state.health);
+  } catch (error) {
+    window.hardware.log('error', 'Could not check TillDeals health.', { message: error.message });
+    setStatus('#backend-health-status', t('backend.failed', { message: error.message }));
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function readProfileForm(emailSelector, nameSelector) {
@@ -58,6 +82,7 @@ function setupOnboarding(state) {
 }
 
 function setupAccountSettings() {
+  document.querySelector('#backend-check-health').addEventListener('click', checkBackendHealth);
   document.querySelector('#account-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     setStatus('#account-status', t('account.saving'));
@@ -72,7 +97,7 @@ function setupAccountSettings() {
     event.target.disabled = true;
     const result = await window.account.refreshEntitlements();
     await renderAccountSettings();
-    if (!result.ok) setStatus('#account-status', t('account.planFailed', { message: result.message }));
+    if (!result.ok) setStatus('#account-status', t('account.planFailed', { message: remoteActionMessage(result) }));
     event.target.disabled = false;
     renderMyDeals();
   });
@@ -150,9 +175,11 @@ async function renderMyDeals() {
     body.append(row);
   }
 
-  setStatus('#mydeals-updated', data.fetchedAt
-    ? t('mydeals.updated', { date: new Date(data.fetchedAt).toLocaleString(), next: new Date(data.nextRefreshAt).toLocaleString() })
-    : t('mydeals.noData'));
+  setStatus('#mydeals-updated', !data.backend.businessApisAvailable
+    ? (data.fetchedAt ? t('backend.cachedDeals', { date: new Date(data.fetchedAt).toLocaleString() }) : t('backend.unavailable'))
+    : data.fetchedAt
+      ? t('mydeals.updated', { date: new Date(data.fetchedAt).toLocaleString(), next: new Date(data.nextRefreshAt).toLocaleString() })
+      : t('mydeals.noData'));
 }
 
 function setupMyDeals() {
@@ -196,7 +223,7 @@ function setupContact() {
       includeHardware: document.querySelector('#contact-include-hardware').checked,
       hardwareSnapshot: window.latestSnapshot,
     });
-    setStatus('#contact-status', result.ok ? t('contact.opened') : t('contact.failed', { message: result.message }));
+    setStatus('#contact-status', result.ok ? t('contact.opened') : t('contact.failed', { message: remoteActionMessage(result) }));
     button.disabled = false;
   });
 }
@@ -207,6 +234,7 @@ async function setupAccount() {
   setupContact();
   const state = await renderAccountSettings();
   setupOnboarding(state);
+  checkBackendHealth();
   window.addEventListener('localechange', () => {
     renderAccountSettings();
     renderMyDeals();

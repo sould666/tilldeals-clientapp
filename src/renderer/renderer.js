@@ -133,6 +133,10 @@ function makeActionButton(label, className, onClick) {
   return button;
 }
 
+function remoteActionMessage(result) {
+  return result.code === 'BACKEND_UNAVAILABLE' ? t('backend.unavailable') : result.message;
+}
+
 function renderPaywall(target, response) {
   const container = typeof target === 'string' ? document.querySelector(target) : target;
   container.replaceChildren();
@@ -147,9 +151,13 @@ function renderPaywall(target, response) {
     button.disabled = true;
     status.textContent = t('paywall.opening');
     const result = await window.billing.checkout(response.product, response.needed || 1);
-    status.textContent = result.ok ? t('paywall.opened') : t('paywall.failed', { message: result.message });
+    status.textContent = result.ok ? t('paywall.opened') : t('paywall.failed', { message: remoteActionMessage(result) });
     button.disabled = false;
   });
+  if (response.backendAvailable === false) {
+    button.disabled = true;
+    status.textContent = t('backend.unavailable');
+  }
   box.append(note, button, status);
   container.append(box);
 }

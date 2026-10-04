@@ -3,8 +3,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const si = require('systeminformation');
+const backend = require('./backend');
 
-const API_BASE_URL = 'https://deals.tillgreen.eu/api';
 const CHECKOUT_HOSTS = new Set(['deals.tillgreen.eu', 'checkout.stripe.com', 'billing.stripe.com']);
 const BILLING_PRODUCTS = new Set(['tracking_slot', 'ai_service', 'refresh_interval', 'consultation']);
 const FREE_TRACKED_LIMIT = 4;
@@ -12,7 +12,6 @@ const FREE_REFRESH_HOURS = 12;
 const REFRESH_OPTIONS_HOURS = [12, 6, 3, 1];
 const TERMS_VERSION = '1';
 const MACHINE_KEY_SALT = 'tilldeals-hardware-machine-key-v1';
-const REQUEST_TIMEOUT_MS = 15000;
 const DEALS_RETRY_AFTER_FAILURE_MS = 15 * 60 * 1000;
 const DEALS_SCHEDULER_TICK_MS = 60 * 1000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -20,9 +19,19 @@ const TRACKED_CATEGORIES = new Set(['processor', 'motherboard', 'ram', 'drives',
 
 let log = () => {};
 let machineIdentity = null;
-let blockedUntil = 0;
 let lastDealsAttemptAt = 0;
 let dealsTimer = null;
+let health = { status: 'unchecked', checkedAt: null };
+
+function backendState() {
+  return { businessApisAvailable: backend.BUSINESS_APIS_AVAILABLE, health };
+}
+
+async function checkBackendHealth() {
+  health = await backend.checkHealth();
+  log(health.status === 'ok' ? 'info' : 'warn', 'TillDeals health check completed.', health);
+  return backendState();
+}
 
 function dataPath(name) {
   return path.join(app.getPath('userData'), name);
@@ -139,51 +148,19 @@ function canUseAi() {
 }
 
 function paymentRequired(product, message) {
-  return { ok: false, code: 'PAYMENT_REQUIRED', product, message };
+  return { ok: false, code: 'PAYMENT_REQUIRED', product, message, backendAvailable: backend.BUSINESS_APIS_AVAILABLE };
 }
 
-async function apiRequest(method, pathname, body) {
-  if (Date.now() < blockedUntil) {
-    const error = new Error('TillDeals asked the app to slow down. Try again later.');
-    error.status = 429;
-    throw error;
-  }
-  const identity = await getMachineIdentity();
-  const token = readSecure('device-token.bin');
-  const headers = {
-    'Content-Type': 'application/json',
-    'X-TillDeals-App-Version': app.getVersion(),
-    'X-TillDeals-Machine': identity.machineKey,
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${API_BASE_URL}${pathname}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (response.status === 429) {
-      const retryAfter = Number(response.headers.get('retry-after'));
-      blockedUntil = Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 60000);
-    }
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      const error = new Error(payload.message || `TillDeals server returned status ${response.status}.`);
-      error.status = response.status;
-      error.code = payload.code;
-      throw error;
-    }
-    return response.status === 204 ? null : response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
+async function apiRequest(method, pathname) {
+  const result = backend.unavailableResult();
+  log('info', 'Unsupported TillDeals business request blocked.', { method, pathname });
+  const error = new Error(result.message);
+  error.code = result.code;
+  throw error;
 }
 
 async function syncProfile() {
+  if (!backend.BUSINESS_APIS_AVAILABLE) return backend.unavailableResult();
   const profile = loadProfile();
   if (!isProfileComplete(profile)) return { ok: false, message: 'Profile is incomplete.' };
   const identity = await getMachineIdentity();
@@ -235,7 +212,7 @@ async function saveProfile(input) {
     syncedAt: changed ? null : existing.syncedAt,
   });
   const sync = await syncProfile();
-  return { ok: true, synced: sync.ok, message: sync.message };
+  return { ok: true, synced: sync.ok, message: sync.message, code: sync.code };
 }
 
 async function getAccountState() {
@@ -248,6 +225,7 @@ async function getAccountState() {
     isVirtual: identity.isVirtual,
     entitlements: loadEntitlements(),
     trackedCount: loadTrackedItems().length,
+    backend: backendState(),
   };
 }
 
@@ -256,7 +234,7 @@ async function refreshEntitlements() {
     const result = await apiRequest('GET', '/account/entitlements');
     return { ok: true, entitlements: saveEntitlements(result) };
   } catch (error) {
-    return { ok: false, message: error.message, entitlements: loadEntitlements() };
+    return { ok: false, code: error.code, message: error.message, entitlements: loadEntitlements() };
   }
 }
 
@@ -283,6 +261,7 @@ function saveTrackedItems(items) {
 }
 
 async function pushTrackedItems(items) {
+  if (!backend.BUSINESS_APIS_AVAILABLE) return false;
   if (!items.length || !loadProfile()?.syncedAt) return false;
   try {
     await apiRequest('PUT', '/tracked-items', {
@@ -335,7 +314,7 @@ async function removeTrackedItem(id) {
   const items = stored.filter((item) => item.id !== id);
   if (items.length === stored.length) return { ok: false, message: 'Item not found.' };
   saveTrackedItems(items);
-  if (loadProfile()?.syncedAt) {
+  if (backend.BUSINESS_APIS_AVAILABLE && loadProfile()?.syncedAt) {
     apiRequest('DELETE', `/tracked-items/${encodeURIComponent(id)}`).catch((error) => {
       log('warn', 'Could not remove tracked item on server.', { message: error.message });
     });
@@ -397,6 +376,7 @@ async function fetchDealsIfDue(onUpdate) {
 
 function startDealsScheduler(onUpdate) {
   clearInterval(dealsTimer);
+  if (!backend.BUSINESS_APIS_AVAILABLE) return;
   fetchDealsIfDue(onUpdate);
   dealsTimer = setInterval(() => fetchDealsIfDue(onUpdate), DEALS_SCHEDULER_TICK_MS);
 }
@@ -408,10 +388,11 @@ function getMyDeals() {
     items: loadTrackedItems(),
     deals: cache.deals.map(({ url, ...deal }) => ({ ...deal, hasLink: Boolean(url) })),
     fetchedAt: cache.fetchedAt,
-    nextRefreshAt: cache.fetchedAt ? new Date(Date.parse(cache.fetchedAt) + refreshHours * 3600 * 1000).toISOString() : null,
+    nextRefreshAt: backend.BUSINESS_APIS_AVAILABLE && cache.fetchedAt ? new Date(Date.parse(cache.fetchedAt) + refreshHours * 3600 * 1000).toISOString() : null,
     refreshHours,
     refreshOptions: REFRESH_OPTIONS_HOURS,
     entitlements: loadEntitlements(),
+    backend: backendState(),
   };
 }
 
@@ -436,6 +417,7 @@ async function openTrustedUrl(rawUrl) {
 }
 
 async function startCheckout(product, quantity) {
+  if (!backend.BUSINESS_APIS_AVAILABLE) return backend.unavailableResult();
   if (!BILLING_PRODUCTS.has(product)) return { ok: false, message: 'Unknown product.' };
   if (!loadProfile()?.syncedAt) return { ok: false, message: 'Your profile is not synced with TillDeals yet. Check your connection and save your profile again.' };
   try {
@@ -451,6 +433,7 @@ async function startCheckout(product, quantity) {
 }
 
 async function requestConsultation(payload, summarizeHardware) {
+  if (!backend.BUSINESS_APIS_AVAILABLE) return backend.unavailableResult();
   if (!loadProfile()?.syncedAt) return { ok: false, message: 'Your profile is not synced with TillDeals yet.' };
   const message = String(payload?.message || '').trim().slice(0, 2000);
   if (!message) return { ok: false, message: 'Describe what you need help with.' };
@@ -472,12 +455,13 @@ function registerAccountIpc(ipcMain, { writeLog, summarizeHardware, broadcast })
   log = writeLog;
   getMachineIdentity().then(() => {
     const profile = loadProfile();
-    if (isProfileComplete(profile) && !profile.syncedAt) syncProfile();
+    if (backend.BUSINESS_APIS_AVAILABLE && isProfileComplete(profile) && !profile.syncedAt) syncProfile();
   }).catch((error) => writeLog('error', 'Could not compute machine key.', { message: error.message }));
 
   ipcMain.handle('account:getState', () => getAccountState());
   ipcMain.handle('account:saveProfile', (_event, input) => saveProfile(input));
   ipcMain.handle('account:refreshEntitlements', () => refreshEntitlements());
+  ipcMain.handle('account:checkBackendHealth', () => checkBackendHealth());
   ipcMain.handle('billing:checkout', (_event, product, quantity) => startCheckout(product, quantity));
   ipcMain.handle('consultation:request', (_event, payload) => requestConsultation(payload, summarizeHardware));
   ipcMain.handle('tilldeals:getTrackedItems', () => loadTrackedItems());

@@ -33,14 +33,14 @@
       <section class="utility-view onboarding-view" data-view="onboarding" hidden>
         <p class="eyebrow" data-i18n="onboarding.eyebrow">PIERWSZE URUCHOMIENIE</p>
         <h2 data-i18n="onboarding.title">Utwórz profil</h2>
-        <p class="utility-note" data-i18n="onboarding.help">Profil jest wymagany do korzystania z aplikacji.</p>
+        <p class="utility-note" data-i18n="backend.profileHelp">Profil jest zapisywany tylko lokalnie. Nie tworzy konta w aplikacji webowej.</p>
         <form id="onboarding-form" class="account-form" novalidate>
           <label for="onboarding-email" data-i18n="account.email">E-mail</label>
           <input id="onboarding-email" type="email" autocomplete="email" maxlength="254" required />
           <label for="onboarding-name" data-i18n="account.displayName">Nazwa wyświetlana</label>
           <input id="onboarding-name" type="text" autocomplete="nickname" maxlength="80" required />
           <label class="setting-row"><input id="onboarding-terms" type="checkbox" required /> <span data-i18n="account.acceptTerms">Akceptuję regulamin i politykę prywatności</span></label>
-          <p class="utility-note" data-i18n="account.machineKeyNote">Aplikacja tworzy anonimowy klucz urządzenia.</p>
+          <p class="utility-note" data-i18n="backend.machineKeyNote">Klucz urządzenia pozostaje lokalny i nie jest dowodem tożsamości.</p>
           <button type="submit" data-i18n="onboarding.submit">Utwórz profil</button>
           <p id="onboarding-status" class="utility-note" role="status"></p>
         </form>
@@ -52,7 +52,7 @@
       <section class="utility-view" data-view="settings" hidden>
         <h2 data-i18n="settings.title">Ustawienia</h2>
         <label class="setting-row"><input id="auto-refresh" type="checkbox" /> <span data-i18n="settings.autoRefresh">Odświeżaj dane sprzętu co 60 sekund</span></label>
-        <p class="utility-note" data-i18n="settings.localData">Dane sprzętu są odczytywane lokalnie. Aplikacja niczego nie wysyła.</p>
+        <p class="utility-note" data-i18n="backend.localData">Profil i śledzone produkty pozostają lokalne. TillDeals otrzymuje tylko publiczne sprawdzenie stanu usługi, bez danych profilu lub urządzenia. Funkcje AI nadal łączą się bezpośrednio z OpenAI.</p>
         <div class="setting-group">
           <label for="locale" data-i18n="language.label">Język</label>
           <select id="locale"><option value="pl" data-i18n="language.polish">Polski</option><option value="en" data-i18n="language.english">English</option></select>
@@ -81,6 +81,9 @@
           </form>
           <p id="account-status" class="utility-note" role="status"></p>
           <p id="account-plan" class="utility-note"></p>
+          <p class="utility-note" data-i18n="backend.unavailable"></p>
+          <button id="backend-check-health" class="secondary-action" type="button" data-i18n="backend.check">Sprawdź połączenie z TillDeals</button>
+          <p id="backend-health-status" class="utility-note" role="status"></p>
         </div>
       </section>
       <section class="utility-view" data-view="diagnosis" hidden>
@@ -156,7 +159,7 @@
       </section>
       <section class="utility-view" data-view="contact" hidden>
         <div class="utility-heading"><div><p class="eyebrow" data-i18n="contact.eyebrow">PŁATNA KONSULTACJA</p><h2 data-i18n="contact.title">Porozmawiaj z konsultantem</h2></div></div>
-        <p class="utility-note" data-i18n="contact.help">Płatna rozmowa na żywo z konsultantem sprzętowym.</p>
+        <p class="utility-note" data-i18n="backend.consultationHelp">Konsultacje i płatności nie są jeszcze dostępne. Ten formularz nie wysyła danych.</p>
         <form id="contact-form" class="account-form">
           <label for="contact-topic" data-i18n="contact.topic">Temat</label>
           <select id="contact-topic">

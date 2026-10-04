@@ -9,7 +9,8 @@
     "package:win": "electron-builder --win dir --x64",
     "package:installer": "electron-builder --win nsis --x64 --publish never",
     "deploy:win": "node scripts/deploy-win.js",
-    "test:sensors": "node scripts/test-sensors.js"
+    "test:sensors": "node scripts/test-sensors.js",
+    "test:backend": "node --test scripts/backend.test.js scripts/account.test.js"
   },
   "dependencies": {
     "systeminformation": "^5.33.8"

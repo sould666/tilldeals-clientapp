@@ -42,3 +42,17 @@ Runtime diagnostics are written to `%APPDATA%\TillDeals Hardware\runtime.log` on
 The Settings and Manual Diagnosis views show local collection behavior and identify sensors that are unavailable because a driver or firmware does not expose them. Temperature values are reported only when a supported sensor returns a valid reading; they are never inferred from unrelated values.
 
 Manual Diagnosis starts with the observed symptom rather than a hardware area. The app assigns the likely problem area after the symptom is selected and provides two modes: `Początkujący` uses short, safe checks in plain language, while `Profesjonalny` provides more technical evidence-gathering steps.
+
+## Backend integration (Phase 0)
+
+The web/backend currently implements only public, read-only `GET https://deals.tillgreen.eu/api/health`. The desktop checks it on startup and through **Check TillDeals connection** in Settings, using main-process fetch with a 15-second timeout, no cookies, tokens, machine identifiers, or profile data. Redirects are rejected. A successful check requires HTTP 200 JSON with `status: "ok"`, a string `release`, Node runtime starting with `24.`, production mode, and `environment`, `pg`, `drizzle`, and `migration` checks all reporting `"ok"`. HTTP 503, malformed responses, network errors, and timeouts are displayed as failures.
+
+A healthy backend does not imply authentication or business API availability. Profile registration/sync, remote entitlements, tracked-item sync, deal polling, checkout, and consultation submission are blocked in the main process. Existing views remain visible with unavailable status; local profile editing and tracked-item management still work. Previously cached deals remain visible, explicitly labelled as local cached data without a next refresh. No web account is created by local onboarding.
+
+Legacy business endpoint assumptions in the client are not approved API contracts. Do not enable them by changing the capability flag alone: agree versioned schemas, authentication, and server-owned authorization with the backend first. Existing locally encrypted tokens are not sent to the health endpoint. OpenAI requests and local hardware collection are unchanged.
+
+Run the backend contract and offline-account regression tests with:
+
+```bash
+npm run test:backend
+```
