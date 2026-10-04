@@ -40,6 +40,7 @@ function fixture({ secure = true, storageBackend = 'gnome_libsecret', failStorag
     randomUUID: () => { uuidCalls++; return INSTALLATION; },
     now: () => time,
     timeoutMs,
+    platform: 'linux',
     fetchImpl: async (url, options) => {
       requests.push({ url, ...options, body: options.body === undefined ? undefined : JSON.parse(options.body) });
       events.push({ type: 'request', url });

@@ -36,6 +36,7 @@ function authError(code, retryAfterSeconds) {
 function createAuth({
   app, safeStorage, log, fetchImpl = globalThis.fetch, fileSystem = fs,
   randomUUID = crypto.randomUUID, now = Date.now, timeoutMs = 15000,
+  platform = process.platform,
 }) {
   const installationPath = path.join(app.getPath('userData'), 'auth-installation.json');
   const tokenPath = path.join(app.getPath('userData'), 'auth-session.bin');
@@ -54,7 +55,7 @@ function createAuth({
 
   function secureAvailable() {
     return safeStorage.isEncryptionAvailable()
-      && (process.platform !== 'linux'
+      && (platform !== 'linux'
         || (typeof safeStorage.getSelectedStorageBackend === 'function'
           && ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6'].includes(safeStorage.getSelectedStorageBackend())));
   }

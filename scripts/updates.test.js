@@ -163,3 +163,16 @@ test('publishing configuration provides stable NSIS updater metadata and preserv
   assert.equal(workflow.includes('--prerelease'), false);
   assert.ok(workflow.includes('Verify published artifact and checksum'));
 });
+
+test('lockfile includes the optional Windows signing dependency graph required by npm ci', () => {
+  const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '../package-lock.json'), 'utf8'));
+  for (const name of [
+    '@electron/windows-sign', 'cross-dirname', 'postject',
+    '@electron/windows-sign/node_modules/fs-extra',
+    '@electron/windows-sign/node_modules/jsonfile',
+    '@electron/windows-sign/node_modules/universalify',
+    'postject/node_modules/commander',
+  ]) {
+    assert.ok(lock.packages[`node_modules/${name}`], `Missing Windows lockfile dependency: ${name}`);
+  }
+});
