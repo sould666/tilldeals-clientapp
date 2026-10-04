@@ -57,6 +57,9 @@ try {
 }
 
 const account = require('./account');
+const { createAuth, registerAuthIpc } = require('./auth');
+const { rendererTrust } = require('./window-trust');
+const trust = rendererTrust(path.join(__dirname, 'renderer', 'index.html'), () => mainWindow);
 
 function isWsl() {
   return Boolean(process.env.WSL_DISTRO_NAME) || os.release().toLowerCase().includes('microsoft');
@@ -981,6 +984,7 @@ function createWindow() {
     },
   });
 
+  trust.restrictNavigation(window.webContents);
   window.webContents.on('did-finish-load', () => writeLog('info', 'Renderer finished loading.'));
   window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedUrl) => {
     writeLog('error', 'Renderer failed to load.', { errorCode, errorDescription, validatedUrl });
@@ -1063,6 +1067,11 @@ app.whenReady().then(() => {
     writeLog,
     summarizeHardware: buildHardwareDataLayer,
     broadcast: (channel) => mainWindow?.webContents.send(channel),
+  });
+  registerAuthIpc(ipcMain, {
+    auth: createAuth({ app, safeStorage, log: writeLog }),
+    isTrustedSender: trust.isTrustedSender,
+    log: writeLog,
   });
   createWindow();
 

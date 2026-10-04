@@ -85,6 +85,30 @@
           <button id="backend-check-health" class="secondary-action" type="button" data-i18n="backend.check">Sprawdź połączenie z TillDeals</button>
           <p id="backend-health-status" class="utility-note" role="status"></p>
         </div>
+        <div class="setting-group">
+          <h3 data-i18n="auth.title">Logowanie kodem e-mail</h3>
+          <p class="utility-note" data-i18n="auth.help"></p>
+          <p id="auth-state" class="utility-note" role="status"></p>
+          <p id="auth-storage" class="utility-note"></p>
+          <form id="auth-email-form" class="account-form">
+            <label for="auth-email" data-i18n="account.email">E-mail</label>
+            <input id="auth-email" type="email" autocomplete="email" maxlength="254" required />
+            <button id="auth-request-code" type="submit" data-i18n="auth.request">Wyślij kod logowania</button>
+          </form>
+          <form id="auth-code-form" class="account-form">
+            <label for="auth-code" data-i18n="auth.code">Kod z e-maila</label>
+            <input id="auth-code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required />
+            <button id="auth-verify-code" type="submit" data-i18n="auth.verify">Potwierdź kod</button>
+          </form>
+          <p id="auth-challenge" class="utility-note"></p>
+          <div class="setting-row">
+            <button id="auth-refresh" type="button" class="secondary-action" data-i18n="auth.refresh">Sprawdź sesję</button>
+            <button id="auth-logout" type="button" class="secondary-action" data-i18n="auth.logout">Wyloguj i unieważnij sesję</button>
+            <button id="auth-local-logout" type="button" class="secondary-action" data-i18n="auth.localLogout">Wyloguj tylko na tym urządzeniu</button>
+          </div>
+          <p class="utility-note" data-i18n="auth.localLogoutHelp"></p>
+          <p id="auth-status" class="utility-note" role="status"></p>
+        </div>
       </section>
       <section class="utility-view" data-view="diagnosis" hidden>
         <div class="utility-heading"><div><p class="eyebrow" data-i18n="diagnosis.eyebrow">ROZWIĄZYWANIE PROBLEMÓW</p><h2 data-i18n="diagnosis.title">Ręczna diagnoza</h2></div><button id="back-to-profile" type="button" data-i18n="action.backProfile">Wróć do profilu</button></div>
@@ -186,6 +210,7 @@
     <script src="diagnosis-tree.js"></script>
     <script src="diagnosis-outcomes.js"></script>
     <script src="renderer.js"></script>
+    <script src="auth.js"></script>
     <script src="account.js"></script>
     <script>setLocale(getLocale());</script>
   </body>

@@ -1,5 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+contextBridge.exposeInMainWorld('auth', {
+  getState: () => ipcRenderer.invoke('auth:getState'),
+  requestCode: (email) => ipcRenderer.invoke('auth:requestCode', { email }),
+  verifyCode: (code) => ipcRenderer.invoke('auth:verifyCode', { code }),
+  refresh: () => ipcRenderer.invoke('auth:refresh'),
+  logout: () => ipcRenderer.invoke('auth:logout'),
+  signOutLocal: () => ipcRenderer.invoke('auth:signOutLocal'),
+});
+
 contextBridge.exposeInMainWorld('hardware', {
   read: () => ipcRenderer.invoke('hardware:read'),
   log: (level, message, details) => ipcRenderer.send('runtime:log', level, message, details),

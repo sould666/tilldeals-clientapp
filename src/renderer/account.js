@@ -71,7 +71,9 @@ function setupOnboarding(state) {
       return;
     }
     document.body.classList.remove('onboarding');
-    showView('profile');
+    document.querySelector('#auth-email').value = document.querySelector('#onboarding-email').value;
+    showView('settings');
+    document.querySelector('#auth-email').focus();
     renderAccountSettings();
   });
 

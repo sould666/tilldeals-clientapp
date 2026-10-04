@@ -5,7 +5,7 @@ function unavailableResult() {
   return {
     ok: false,
     code: 'BACKEND_UNAVAILABLE',
-    message: 'TillDeals currently supports health checks only. Account sync, plans, deals, payments and consultations are not available yet.',
+    message: 'TillDeals health and email-code authentication are available separately. Profile/item sync, plans, deals, payments and consultations are not available yet.',
   };
 }
 
