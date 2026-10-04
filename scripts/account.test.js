@@ -148,6 +148,7 @@ test('legacy IDs migrate persistently and local add/remove sync full snapshots i
   const account = loadAccount({
     'tilldeals-tracked-items.json': [{ id: 'legacy-id', name: 'RAM', category: 'ram', source: 'manual', addedAt: '2026-01-01T00:00:00.000Z' }],
   });
+
   const migrated = await account.invoke('tilldeals:getTrackedItems');
   assert.match(migrated[0].id, /^[0-9a-f-]{36}$/);
   assert.equal((await account.invoke('tilldeals:getTrackedItems'))[0].id, migrated[0].id);
@@ -164,4 +165,17 @@ test('legacy IDs migrate persistently and local add/remove sync full snapshots i
   await account.invoke('tilldeals:removeTrackedItem', added.items.find((item) => item.name === 'SSD').id);
   assert.equal(snapshots.at(-1).length, 0);
   assert.equal(account.requests.length, 0);
+});
+
+test('corrupt tracked storage cannot become an empty snapshot or be overwritten by local edits', async () => {
+  for (const stored of ['invalid-json', '{}', '[null]', '[{"id":"legacy","name":""}]']) {
+    const account = loadAccount({ 'tilldeals-tracked-items.json': stored });
+    let syncCalls = 0;
+    account.setTrackedSync({ sync: async () => { syncCalls++; } });
+    assert.throws(() => account.invoke('tilldeals:getTrackedItems'), /STORAGE_ERROR/);
+    await assert.rejects(account.invoke('tilldeals:addTrackedItems', [{ name: 'Test', category: 'ram' }], 'manual'), /STORAGE_ERROR/);
+    assert.equal(account.files.get('/test-user-data/tilldeals-tracked-items.json'), stored);
+    assert.equal(syncCalls, 0);
+    assert.ok(account.logs.some((entry) => entry[2]?.code === 'STORAGE_ERROR'));
+  }
 });

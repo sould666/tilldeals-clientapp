@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createAuth, registerAuthIpc } = require('../src/auth');
 const { rendererTrust } = require('../src/window-trust');
+const { createTrackedSync } = require('../src/tracked-sync');
 
 const INSTALLATION = '11111111-1111-4111-8111-111111111111';
 const CHALLENGE = '22222222-2222-4222-8222-222222222222';
@@ -10,7 +11,7 @@ const SESSION = '44444444-4444-4444-8444-444444444444';
 const TOKEN = 'opaque-test-token-with-no-required-prefix';
 const START = Date.parse('2026-10-04T08:00:00Z');
 
-function fixture({ secure = true, storageBackend = 'gnome_libsecret', failStorage = false, seed = new Map(), timeoutMs = 100 } = {}) {
+function fixture({ secure = true, storageBackend = 'gnome_libsecret', failStorage = false, seed = new Map(), timeoutMs = 100, onValidated, onStateChanged } = {}) {
   const files = seed;
   const requests = [];
   const logs = [];
@@ -41,6 +42,8 @@ function fixture({ secure = true, storageBackend = 'gnome_libsecret', failStorag
     now: () => time,
     timeoutMs,
     platform: 'linux',
+    onValidated,
+    onStateChanged,
     fetchImpl: async (url, options) => {
       requests.push({ url, ...options, body: options.body === undefined ? undefined : JSON.parse(options.body) });
       events.push({ type: 'request', url });
@@ -305,6 +308,52 @@ test('authenticated tracked snapshot uses only new bearer route and space opens 
   await f.auth.signOutLocal();
   assert.equal((await f.auth.putTrackedItems([], context)).code, 'AUTH_REQUIRED');
   assert.equal((await f.auth.openSpace(async () => assert.fail())).code, 'AUTH_REQUIRED');
+});
+
+test('verified login and restored account validation automatically upload the authoritative snapshot', async () => {
+  let sync;
+  let activeAuth;
+  let completed;
+  const f = fixture({
+    onValidated: () => sync.sync(),
+    onStateChanged: () => sync.authChanged(),
+  });
+  activeAuth = f.auth;
+  const localItems = [{
+    id: CHALLENGE, name: 'Test product', category: 'ram', source: 'manual',
+    addedAt: new Date(START).toISOString(),
+  }];
+  const snapshot = localItems.map(({ id, ...fields }) => ({ clientId: id, ...fields }));
+  const reply = () => Response.json({
+    installationId: INSTALLATION, items: snapshot, syncedAt: new Date(START).toISOString(),
+  });
+  sync = createTrackedSync({
+    auth: {
+      getContext: () => activeAuth.getContext(),
+      putTrackedItems: (...args) => activeAuth.putTrackedItems(...args),
+    },
+    readItems: () => localItems, log: () => {},
+    broadcast: (_channel, state) => { if (state.status === 'synced') completed(); },
+  });
+  let synced = new Promise((resolve) => { completed = resolve; });
+  f.replies.push(challengeResponse(), Response.json(verificationPayload()), reply());
+  await f.auth.requestCode({ email: 'user@example.test' });
+  await f.auth.verifyCode({ code: '012345' });
+  await synced;
+  assert.deepEqual(f.requests.at(-1).body, { items: snapshot });
+  assert.equal(f.requests.at(-1).method, 'PUT');
+  assert.equal(sync.getState().status, 'synced');
+  activeAuth = f.restart();
+  assert.equal((await activeAuth.getState()).auth.status, 'unconfirmed');
+  const before = f.requests.length;
+  synced = new Promise((resolve) => { completed = resolve; });
+  f.replies.push(accountResponse(), reply());
+  await activeAuth.refresh();
+  await synced;
+  assert.deepEqual(f.requests.slice(before).map((request) => request.method), ['GET', 'PUT']);
+  assert.equal(f.requests.at(-1).url, 'https://deals.tillgreen.eu/api/v1/tracked-items');
+  assert.deepEqual(f.requests.at(-1).body, { items: snapshot });
+  assert.equal(JSON.stringify(sync.getState()).includes(TOKEN), false);
 });
 
 test('404, invalid JSON and timeouts fail explicitly, without automatic retries', async () => {

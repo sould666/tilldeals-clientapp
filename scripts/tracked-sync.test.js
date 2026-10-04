@@ -98,3 +98,16 @@ test('enforces 100 items, UUID uniqueness, UTF-8 byte limit and response install
   await f.sync.sync();
   assert.equal(f.sync.getState().code, 'INVALID_RESPONSE');
 });
+
+test('unreadable local storage reports failure without uploading an empty snapshot', async () => {
+  let calls = 0;
+  const sync = createTrackedSync({
+    auth: { getContext: () => 'validated-session', putTrackedItems: async () => { calls++; } },
+    readItems: () => { throw new Error('STORAGE_ERROR'); },
+    log: () => {}, broadcast: () => {},
+  });
+  await sync.sync();
+  assert.equal(sync.getState().status, 'error');
+  assert.equal(sync.getState().code, 'STORAGE_ERROR');
+  assert.equal(calls, 0);
+});

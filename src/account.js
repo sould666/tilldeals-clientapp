@@ -38,12 +38,16 @@ function dataPath(name) {
   return path.join(app.getPath('userData'), name);
 }
 
-function readJson(name, fallback) {
+function readJson(name, fallback, strict = false) {
   const filePath = dataPath(name);
   if (!fs.existsSync(filePath)) return fallback;
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (error) {
+    if (strict) {
+      log('error', `Could not read ${name}.`, { code: 'STORAGE_ERROR' });
+      throw new Error('STORAGE_ERROR');
+    }
     log('error', `Could not read ${name}.`, { message: error.message });
     return fallback;
   }
@@ -240,8 +244,14 @@ async function refreshEntitlements() {
 }
 
 function loadTrackedItems() {
-  const stored = readJson('tilldeals-tracked-items.json', []);
-  if (!Array.isArray(stored)) return [];
+  const stored = readJson('tilldeals-tracked-items.json', [], true);
+  if (!Array.isArray(stored) || stored.some((entry) => !entry
+    || (Array.isArray(entry.items)
+      ? entry.items.some((name) => typeof name !== 'string' || !name.trim())
+      : typeof entry.name !== 'string' || !entry.name.trim()))) {
+    log('error', 'Could not read tracked-product list.', { code: 'STORAGE_ERROR' });
+    throw new Error('STORAGE_ERROR');
+  }
   // Earlier versions stored grouped entries ({ items: [...] }); flatten them into single items.
   let migrated = false;
   const items = stored.flatMap((entry) => {
